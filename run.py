@@ -1,7 +1,6 @@
 """
 爬虫统一入口 - 单文件版
 Usage:
-    python3 run.py cfcpn --no-proxy       # 直连模式
     python3 run.py cfcpn --list 5         # 爬5页列表
     python3 run.py cfcpn --list all       # 爬全部列表
     python3 run.py cfcpn --resume         # 断点续爬
@@ -45,7 +44,6 @@ def find_node():
 def cfcpn_add_args(parser):
     parser.add_argument('--list', nargs='?', const='5', metavar='N',
                         help='先爬 N 页列表（默认5页，传 all 爬全部）')
-    parser.add_argument('--no-proxy', action='store_true', help='不使用代理')
     parser.add_argument('--resume', action='store_true', help='断点续爬')
     parser.add_argument('--begin-date', metavar='DATE', help='开始日期，格式 yyyy-MM-dd')
     parser.add_argument('--end-date', metavar='DATE', help='结束日期，格式 yyyy-MM-dd')
@@ -53,14 +51,12 @@ def cfcpn_add_args(parser):
 
 
 def cfcpn_run(args):
-    script_dir = os.path.join(BASE_DIR, 'cfcpn')
+    script_dir = os.path.join(BASE_DIR, 'scrapers')
     script_path = os.path.join(script_dir, 'scrape_cfcpn.js')
     cmd = [find_node(), script_path]
 
     if getattr(args, 'list', None):
         cmd += ['--list', args.list]
-    if args.no_proxy:
-        cmd.append('--no-proxy')
     if args.resume:
         cmd.append('resume')
     if args.yesterday:

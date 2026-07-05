@@ -1,180 +1,24 @@
 /**
- * 金采网 (CFCPN) 采购公告爬虫 v4 (带免费代理池)
+ * 金采网 (CFCPN) 采购公告爬虫
  * 
  * Usage:
  *   node scrape_cfcpn.js                    # 从 cfcpn_data.json 加载列表，抓正文
  *   node scrape_cfcpn.js resume             # 从上次中断处续爬
  *   node scrape_cfcpn.js --list 5           # 先爬5页列表，再抓正文
  *   node scrape_cfcpn.js --list all         # 先爬全部列表，再抓正文
- *   node scrape_cfcpn.js --no-proxy         # 不使用代理（直连）
  */
 
 const http = require('http');
-const https = require('https');
 const fs = require('fs');
 const path = require('path');
-const net = require('net');
 
-const API_URL = 'http://www.cfcpn.com/jcw/noticeinfo/noticeInfo/dataNoticeList';
 const PAGE_SIZE = 10;
 const OUTPUT_JSON = path.join(__dirname, '..', 'row_data', 'cfcpn_data.json');
 const PROGRESS_FILE = path.join(__dirname, 'cfcpn_progress.json');
 
-// ===================== 代理池 =====================
+// ===================== 请求层 =====================
 
-const PROXY_SOURCES = [
-  'https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/http/data.txt',
-  'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt',
-  'https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/http/data.txt',
-];
-
-let proxyPool = [];
-let proxyIndex = 0;
-let useProxy = true;
-
-// 下载免费代理列表
-function downloadProxies(url) {
-  return new Promise((resolve) => {
-    const mod = url.startsWith('https') ? https : http;
-    const req = mod.get(url, { timeout: 10000 }, (res) => {
-      let data = '';
-      res.on('data', (chunk) => (data += chunk));
-      res.on('end', () => resolve(data));
-    });
-    req.on('error', () => resolve(''));
-    req.on('timeout', () => { req.destroy(); resolve(''); });
-  });
-}
-
-async function initProxyPool() {
-  if (!useProxy) {
-    console.log('⚡ 直连模式 (不使用代理)\n');
-    return;
-  }
-
-  console.log('🔄 正在下载免费代理列表...');
-  let raw = '';
-  for (const url of PROXY_SOURCES) {
-    raw = await downloadProxies(url);
-    if (raw && raw.length > 100) break;
-  }
-
-  if (!raw) {
-    console.log('⚠ 无法下载代理列表，切换为直连模式\n');
-    useProxy = false;
-    return;
-  }
-
-  const proxies = raw
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => /^\d+\.\d+\.\d+\.\d+:\d+$/.test(l));
-
-  // 打乱顺序，取前 200 个测试
-  const shuffled = proxies.sort(() => Math.random() - 0.5).slice(0, 200);
-  console.log(`  下载 ${proxies.length} 个代理，测试前 ${shuffled.length} 个...\n`);
-
-  // 并发测试代理（每批 20 个）
-  const BATCH = 20;
-  for (let i = 0; i < shuffled.length && proxyPool.length < 30; i += BATCH) {
-    const batch = shuffled.slice(i, i + BATCH);
-    const results = await Promise.all(batch.map((p) => testProxy(p)));
-    const working = results.filter(Boolean);
-    proxyPool.push(...working);
-    process.stdout.write(
-      `  测试 ${Math.min(i + BATCH, shuffled.length)}/${shuffled.length} | 可用: ${proxyPool.length}\r`
-    );
-    if (proxyPool.length >= 30) break;
-  }
-
-  console.log(`\n  ✓ 代理池就绪: ${proxyPool.length} 个可用代理\n`);
-
-  if (proxyPool.length === 0) {
-    console.log('⚠ 无可用代理，切换为直连模式\n');
-    useProxy = false;
-  }
-}
-
-// 测试单个代理是否能访问 cfcpn API
-function testProxy(proxyStr) {
-  return new Promise((resolve) => {
-    const [host, port] = proxyStr.split(':');
-    const postData = new URLSearchParams({
-      id: '003ff714d80444df82f39713d51c6142',
-      isDetail: '1',
-    }).toString();
-
-    const req = http.request(
-      {
-        host,
-        port: parseInt(port),
-        method: 'CONNECT',
-        path: 'www.cfcpn.com:80',
-      }
-    );
-
-    req.on('connect', (_res, socket) => {
-      const apiReq = http.request(
-        {
-          host: 'www.cfcpn.com',
-          port: 80,
-          path: '/jcw/noticeinfo/noticeInfo/dataNoticeList',
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Content-Length': Buffer.byteLength(postData),
-          },
-          socket: socket,
-          agent: new http.Agent({ keepAlive: false }),
-        },
-        (res) => {
-          let data = '';
-          res.on('data', (c) => (data += c));
-          res.on('end', () => {
-            try {
-              const json = JSON.parse(data);
-              if (json.result && json.rows && json.rows[0] && json.rows[0].noticeContent) {
-                resolve({ host, port: parseInt(port), proxy: proxyStr });
-              } else {
-                resolve(null);
-              }
-            } catch {
-              resolve(null);
-            }
-          });
-        }
-      );
-      apiReq.on('error', () => resolve(null));
-      apiReq.write(postData);
-      apiReq.end();
-    });
-
-    req.on('error', () => resolve(null));
-    req.setTimeout(8000, () => { req.destroy(); resolve(null); });
-    req.end();
-  });
-}
-
-// 获取下一个代理（轮转）
-function getNextProxy() {
-  if (proxyPool.length === 0) return null;
-  const proxy = proxyPool[proxyIndex % proxyPool.length];
-  proxyIndex++;
-  return proxy;
-}
-
-// 移除坏掉的代理
-function removeProxy(proxy) {
-  const idx = proxyPool.findIndex((p) => p.proxy === proxy.proxy);
-  if (idx >= 0) {
-    proxyPool.splice(idx, 1);
-    if (proxyIndex >= proxyPool.length) proxyIndex = 0;
-  }
-}
-
-// ===================== 请求层（支持代理） =====================
-
-function apiRequestDirect(params) {
+function apiRequest(params) {
   const postData = new URLSearchParams(params).toString();
   return new Promise((resolve, reject) => {
     const req = http.request(
@@ -211,70 +55,9 @@ function apiRequestDirect(params) {
   });
 }
 
-function apiRequestViaProxy(params, proxy) {
-  const postData = new URLSearchParams(params).toString();
-  return new Promise((resolve, reject) => {
-    const connectReq = http.request({
-      host: proxy.host,
-      port: proxy.port,
-      method: 'CONNECT',
-      path: 'www.cfcpn.com:80',
-    });
-
-    connectReq.on('connect', (_res, socket) => {
-      const req = http.request(
-        {
-          host: 'www.cfcpn.com',
-          port: 80,
-          path: '/jcw/noticeinfo/noticeInfo/dataNoticeList',
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Content-Length': Buffer.byteLength(postData),
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          },
-          socket,
-          agent: new http.Agent({ keepAlive: false }),
-        },
-        (res) => {
-          let data = '';
-          res.on('data', (c) => (data += c));
-          res.on('end', () => {
-            try { resolve(JSON.parse(data)); }
-            catch { reject(new Error(`JSON parse: ${data.substring(0, 100)}`)); }
-          });
-        }
-      );
-      req.on('error', reject);
-      req.setTimeout(15000, () => { req.destroy(); reject(new Error('proxy timeout')); });
-      req.write(postData);
-      req.end();
-    });
-
-    connectReq.on('error', reject);
-    connectReq.setTimeout(10000, () => { connectReq.destroy(); reject(new Error('connect timeout')); });
-    connectReq.end();
-  });
-}
-
-// ===================== 限频退避 + 代理轮转 =====================
+// ===================== 限频退避 =====================
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function apiRequest(params) {
-  if (!useProxy || proxyPool.length === 0) {
-    return apiRequestDirect(params);
-  }
-
-  const proxy = getNextProxy();
-  try {
-    return await apiRequestViaProxy(params, proxy);
-  } catch {
-    removeProxy(proxy);
-    // fallback to direct
-    return apiRequestDirect(params);
-  }
-}
 
 async function requestWithBackoff(requestFn, label) {
   let delay = 5000;
@@ -300,7 +83,7 @@ async function requestWithBackoff(requestFn, label) {
     if (data.message && data.message.includes('频繁')) {
       if (attempt < MAX_ATTEMPTS) {
         const waitSec = delay / 1000;
-        console.log(`    ⚠ 限频 → 等待 ${waitSec}s (${attempt}/${MAX_ATTEMPTS}) [代理池: ${proxyPool.length}]`);
+        console.log(`    ⚠ 限频 → 等待 ${waitSec}s (${attempt}/${MAX_ATTEMPTS})`);
         await sleep(delay);
         delay = Math.min(delay * 2, MAX_DELAY);
       } else {
@@ -400,18 +183,12 @@ function loadExistingData() {
 async function main() {
   const args = process.argv.slice(2);
   const isResume = args.includes('resume');
-  const noProxy = args.includes('--no-proxy');
   const listIdx = args.indexOf('--list');
   const listPages = listIdx >= 0 ? args[listIdx + 1] : null;
   const beginIdx = args.indexOf('--begin-date');
   const endIdx = args.indexOf('--end-date');
   if (beginIdx >= 0) dateBegin = args[beginIdx + 1] || '';
   if (endIdx >= 0) dateEnd = args[endIdx + 1] || '';
-
-  if (noProxy) useProxy = false;
-
-  // 初始化代理池
-  await initProxyPool();
 
   let allRows = [];
   let total = 0;
@@ -465,7 +242,7 @@ async function main() {
   }
 
   // ---- 抓正文 ----
-  console.log(`[2/3] 爬取 ${allRows.length} 条正文 (从第 ${startDetailIdx + 1} 条, 代理池: ${proxyPool.length})...\n`);
+  console.log(`[2/3] 爬取 ${allRows.length} 条正文 (从第 ${startDetailIdx + 1} 条)...\n`);
 
   for (let i = startDetailIdx; i < allRows.length; i++) {
     const row = allRows[i];
@@ -481,7 +258,7 @@ async function main() {
     }
 
     const st = row.noticeContent ? '✓' : '⚠';
-    console.log(`  [${i + 1}/${allRows.length}] ${row.noticeTitle?.substring(0, 30)}... ${st} [代理: ${proxyPool.length}]`);
+    console.log(`  [${i + 1}/${allRows.length}] ${row.noticeTitle?.substring(0, 30)}... ${st}`);
 
     if ((i + 1) % 5 === 0 || i === allRows.length - 1) {
       saveProgress({ rows: allRows, total, nextDetailIdx: i + 1 });
