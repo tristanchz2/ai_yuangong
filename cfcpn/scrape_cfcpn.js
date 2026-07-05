@@ -18,7 +18,6 @@ const net = require('net');
 const API_URL = 'http://www.cfcpn.com/jcw/noticeinfo/noticeInfo/dataNoticeList';
 const PAGE_SIZE = 10;
 const OUTPUT_JSON = path.join(__dirname, '..', 'row_data', 'cfcpn_data.json');
-const OUTPUT_CSV = path.join(__dirname, '..', 'row_data', 'cfcpn_data.csv');
 const PROGRESS_FILE = path.join(__dirname, 'cfcpn_progress.json');
 
 // ===================== 代理池 =====================
@@ -358,13 +357,6 @@ function stripHtml(html) {
   return t.trim();
 }
 
-function csvEscape(val) {
-  if (val == null) return '';
-  const str = String(val);
-  return (str.includes(',') || str.includes('"') || str.includes('\n'))
-    ? '"' + str.replace(/"/g, '""') + '"' : str;
-}
-
 // ===================== 进度管理 =====================
 
 function saveProgress(p) { fs.writeFileSync(PROGRESS_FILE, JSON.stringify(p, null, 2), 'utf8'); }
@@ -380,14 +372,6 @@ function saveOutput(rows, total) {
     })),
   };
   fs.writeFileSync(OUTPUT_JSON, JSON.stringify(jsonOutput, null, 2), 'utf8');
-
-  const csvHeader = '序号,标题,发布时间,采购人,采购方式,地区,品类,标签,来源,正文';
-  const csvRows = rows.map((r, i) => [
-    i + 1, csvEscape(r.noticeTitle), csvEscape(r.publishTime), csvEscape(r.userName),
-    csvEscape(r.purchaseTypeLable), csvEscape(r.area), csvEscape(r.labelAllId),
-    csvEscape(r.yxCategoryNames), csvEscape(r.noticeSource), csvEscape(stripHtml(r.noticeContent)),
-  ].join(','));
-  fs.writeFileSync(OUTPUT_CSV, '\uFEFF' + csvHeader + '\n' + csvRows.join('\n'), 'utf8');
 }
 
 function loadExistingData() {
@@ -507,7 +491,7 @@ async function main() {
 
   console.log(`\n[3/3] 保存...`);
   saveOutput(allRows, total);
-  console.log(`  JSON: ${OUTPUT_JSON}\n  CSV:  ${OUTPUT_CSV}`);
+  console.log(`  JSON: ${OUTPUT_JSON}`);
   if (fs.existsSync(PROGRESS_FILE)) fs.unlinkSync(PROGRESS_FILE);
   console.log(`\n✓ 完成！${allRows.length} 条`);
 }
