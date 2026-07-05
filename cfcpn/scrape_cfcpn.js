@@ -17,8 +17,8 @@ const net = require('net');
 
 const API_URL = 'http://www.cfcpn.com/jcw/noticeinfo/noticeInfo/dataNoticeList';
 const PAGE_SIZE = 10;
-const OUTPUT_JSON = path.join(__dirname, 'cfcpn_data.json');
-const OUTPUT_CSV = path.join(__dirname, 'cfcpn_data.csv');
+const OUTPUT_JSON = path.join(__dirname, '..', 'row_data', 'cfcpn_data.json');
+const OUTPUT_CSV = path.join(__dirname, '..', 'row_data', 'cfcpn_data.csv');
 const PROGRESS_FILE = path.join(__dirname, 'cfcpn_progress.json');
 
 // ===================== 代理池 =====================
@@ -189,12 +189,17 @@ function apiRequestDirect(params) {
           'Content-Length': Buffer.byteLength(postData),
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Referer': 'http://www.cfcpn.com/jcw/sys/index/goUrl?url=modules/sys/login/list&column=cggg',
+          'Origin': 'http://www.cfcpn.com',
         },
       },
       (res) => {
         let data = '';
         res.on('data', (c) => (data += c));
         res.on('end', () => {
+          if (res.statusCode !== 200) {
+            reject(new Error(`HTTP ${res.statusCode}: ${data.substring(0, 100)}`));
+            return;
+          }
           try { resolve(JSON.parse(data)); }
           catch (e) { reject(new Error(`JSON parse: ${data.substring(0, 100)}`)); }
         });
@@ -275,6 +280,7 @@ async function apiRequest(params) {
 async function requestWithBackoff(requestFn, label) {
   let delay = 5000;
   const MAX_ATTEMPTS = 6;
+  const MAX_DELAY = 120000;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     let data;
@@ -284,7 +290,7 @@ async function requestWithBackoff(requestFn, label) {
       if (attempt < MAX_ATTEMPTS) {
         console.log(`    ⚠ 请求异常: ${e.message}，等待 ${delay / 1000}s...`);
         await sleep(delay);
-        delay = Math.min(delay * 2, 120000);
+        delay = Math.min(delay * 2, MAX_DELAY);
         continue;
       }
       return { result: false, message: e.message };
@@ -297,7 +303,7 @@ async function requestWithBackoff(requestFn, label) {
         const waitSec = delay / 1000;
         console.log(`    ⚠ 限频 → 等待 ${waitSec}s (${attempt}/${MAX_ATTEMPTS}) [代理池: ${proxyPool.length}]`);
         await sleep(delay);
-        delay = Math.min(delay * 2, 120000);
+        delay = Math.min(delay * 2, MAX_DELAY);
       } else {
         console.log(`    ✗ ${label}: 限频，已重试 ${MAX_ATTEMPTS} 次`);
         return data;
@@ -308,13 +314,27 @@ async function requestWithBackoff(requestFn, label) {
   }
 }
 
+let dateBegin = '';
+let dateEnd = '';
+
 function fetchPage(pageNo) {
+  // 日期过滤在客户端进行，API的日期过滤有bug
   return apiRequest({
-    pageNo: String(pageNo), pageSize: String(PAGE_SIZE), column: 'cggg',
-    searchType: '选择分类', searchContent: '', searchNoticeType: '1', searchText: '',
-    region: '', commonLabel1: '', commonLabel2: '',
-    beginPublishTime: '', endPublishTime: '', searchVal: '', searchPurId: '', labelAllId: '',
+    noticeType: '', pageSize: String(PAGE_SIZE), pageNo: String(pageNo),
+    noticeState: '1', isValid: '1', orderBy: 'publish_time desc',
+    beginPublishTime: '', endPublishTime: '',
+    areaProvince: '', labelAllId: '',
+    noticeContent: '', briefContent: '', noticeTitle: '',
+    purchaseName: '', categoryLabName: '', purchaseId: '',
   });
+}
+
+function isInDateRange(row) {
+  if (!dateBegin && !dateEnd) return true;
+  const pubTime = (row.publishTime || '').substring(0, 10);
+  if (dateBegin && pubTime < dateBegin) return false;
+  if (dateEnd && pubTime > dateEnd) return false;
+  return true;
 }
 
 function fetchDetail(id) {
@@ -399,6 +419,10 @@ async function main() {
   const noProxy = args.includes('--no-proxy');
   const listIdx = args.indexOf('--list');
   const listPages = listIdx >= 0 ? args[listIdx + 1] : null;
+  const beginIdx = args.indexOf('--begin-date');
+  const endIdx = args.indexOf('--end-date');
+  if (beginIdx >= 0) dateBegin = args[beginIdx + 1] || '';
+  if (endIdx >= 0) dateEnd = args[endIdx + 1] || '';
 
   if (noProxy) useProxy = false;
 
@@ -417,17 +441,32 @@ async function main() {
     for (let page = 1; page <= maxPages; page++) {
       await sleep(2000);
       const d = await requestWithBackoff(() => fetchPage(page), `列表${page}`);
-      if (!d?.result || !d.rows?.length) { if (page === 1) { console.error('API 错误'); process.exit(1); } break; }
-      if (page === 1) { total = d.total; console.log(`  共 ${total} 条`); }
-      allRows.push(...d.rows);
-      console.log(`  第 ${page} 页 ✓`);
-      saveProgress({ rows: allRows, total, nextDetailIdx: 0 });
+      if (!d?.result) { console.error(`API 错误: ${d?.message || 'unknown'}`); process.exit(1); }
+      if (!d.rows?.length) { if (page === 1) { console.log('  无数据'); } break; }
+      if (page === 1) { total = d.total; console.log(`  API 共 ${total} 条`); }
+
+      // 客户端日期过滤
+      const filtered = d.rows.filter(isInDateRange);
+      allRows.push(...filtered);
+      console.log(`  第 ${page} 页 ✓ (${filtered.length}/${d.rows.length} 条匹配)`);
+
+      // 如果数据已经早于起始日期，停止翻页
+      const oldestOnPage = d.rows[d.rows.length - 1]?.publishTime?.substring(0, 10) || '';
+      if (dateBegin && oldestOnPage < dateBegin) {
+        console.log(`  已超出日期范围，停止翻页`);
+        break;
+      }
+      saveProgress({ rows: allRows, total: allRows.length, nextDetailIdx: 0 });
     }
     console.log(`  列表完成: ${allRows.length} 条\n`);
   }
 
   // ---- 加载已有数据 ----
   if (allRows.length === 0) {
+    if (listPages) {
+      console.log('✓ 该日期范围内无数据');
+      return;
+    }
     if (isResume) {
       const p = loadExistingData();
       if (!p?.rows) { console.error('⚠ 无进度文件'); process.exit(1); }
