@@ -1,3 +1,0 @@
-- HTTP requests are wrapped in Promises returning parsed JSON, with errors propagated through Promise rejection rather than callbacks.
-- Rate limiting is enforced by awaiting a fixed-duration `sleep(500)` between successive page requests instead of using exponential backoff.
-- CLI argument parsing is positional and minimal: `process.argv[2]` controls page count, falling back to a hard-coded default when absent.
