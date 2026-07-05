@@ -1,1 +1,0 @@
-Run directly with Node: `node scrape_cfcpn.js [N|all]` where N defaults to 5 pages (50 rows) and `all` fetches every page (~140k records). Produces `cfcpn_data.json` and `cfcpn_data.csv` in the same directory.
