@@ -1,0 +1,9 @@
+```数据来源```  
+金采网：http://www.cfcpn.com/  
+中银智采：https://ctpch.fmscop.bankofchina.com/  
+农银e采平台：https://jc.abchina.com.cn/  
+国家开发银行采购网：http://cg.cdb.com.cn/  
+中国人民银行集中采购中心：https://jzcg.pbc.gov.cn/  
+工银集采：https://jc.icbc.com.cn/  
+龙集采：https://ibuy.ccb.com/  
+邮银易采：https://cg.psbc.com/  
