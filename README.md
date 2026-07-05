@@ -7,3 +7,6 @@
 工银集采：https://jc.icbc.com.cn/  
 龙集采：https://ibuy.ccb.com/  
 邮银易采：https://cg.psbc.com/  
+中信金控采购共享平台：https://ebid.cfhc.citic/  
+浦发银行采购供应商门户：https://ebuy.spdb.com.cn/  
+广发银行供应商服务平台：https://gfcg.cgbchina.com.cn/
