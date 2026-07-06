@@ -14,7 +14,7 @@ const initCycleTLS = require('cycletls');
 const fs = require('fs');
 const path = require('path');
 
-const OUTPUT_JSON = path.join(__dirname, '..', 'row_data', 'abc_puc_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', '..', 'row_data', 'abc_puc_data.json');
 const BASE_URL = 'https://jc.abchina.com.cn/gateway/puc/portalMessage';
 
 // Chrome TLS 指纹 (JA3) — 服务端 WAF 通过 JA3 识别非浏览器请求

@@ -15,7 +15,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const OUTPUT_JSON = path.join(__dirname, '..', 'row_data', 'ccb_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', '..', 'row_data', 'ccb_data.json');
 const SITE_BASE = 'https://ibuy.ccb.com';
 const CHANNEL_ID = '355'; // 招标公告
 

@@ -14,7 +14,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const OUTPUT_JSON = path.join(__dirname, '..', 'row_data', 'icbc_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', '..', 'row_data', 'icbc_data.json');
 const HOSTNAME = 'jc.icbc.com.cn';
 const API_PATH = '/app/queryPortalNoticeInfoPage';
 

@@ -12,7 +12,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const OUTPUT_JSON = path.join(__dirname, '..', 'row_data', 'boc_pcm_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', '..', 'row_data', 'boc_pcm_data.json');
 const BASE_URL = '/pcm/c-pcm-web/C08411SUP000/v1/SupplierEnroll/client';
 const HOSTNAME = 'ctpch.fmscop.bankofchina.com';
 
