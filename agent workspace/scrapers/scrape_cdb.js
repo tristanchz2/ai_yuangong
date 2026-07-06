@@ -11,7 +11,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const OUTPUT_JSON = path.join(__dirname, '..', 'row_data', 'cdb_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', '..', 'row_data', 'cdb_data.json');
 const SITE_BASE = 'https://cg.cdb.com.cn';
 const LIST_BASE = `${SITE_BASE}/cmsjieguo`;
 

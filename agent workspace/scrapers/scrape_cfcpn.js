@@ -14,7 +14,7 @@ const path = require('path');
 
 const PAGE_SIZE = 10;
 const BASE_URL = 'http://www.cfcpn.com/jcw/sys/index/goUrl?url=modules/sys/login/detail&column=undefined&searchVal=';
-const OUTPUT_JSON = path.join(__dirname, '..', 'row_data', 'cfcpn_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', '..', 'row_data', 'cfcpn_data.json');
 const PROGRESS_FILE = path.join(__dirname, 'cfcpn_progress.json');
 
 // ===================== 请求层 =====================

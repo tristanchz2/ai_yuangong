@@ -18,7 +18,7 @@ const { URL } = require('url');
 
 // ===================== 配置 =====================
 
-const OUTPUT_JSON = path.join(__dirname, '..', 'row_data', 'ccgp_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', '..', 'row_data', 'ccgp_data.json');
 const PROGRESS_FILE = path.join(__dirname, 'ccgp_progress.json');
 
 // 搜索关键词
