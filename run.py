@@ -134,6 +134,36 @@ def icbc_run(args):
 register('icbc', '工银集采 (ICBC) 招标公告爬虫', icbc_run)
 
 
+# ---- cdb 国家开发银行采购网 ----
+# JS 参数: --latest N, --yesterday, --date
+
+def cdb_run(args):
+    cmd = build_node_cmd('scrape_cdb.js')
+    if args.yesterday:
+        cmd.append('--yesterday')
+    else:
+        cmd += ['--latest', str(args.latest)]
+    run_script(cmd, 'cdb')
+
+
+register('cdb', '国开采购网 (CDB) 结果公告爬虫', cdb_run)
+
+
+# ---- ccb 建设银行龙集采 ----
+# JS 参数: --latest N, --yesterday, --date
+
+def ccb_run(args):
+    cmd = build_node_cmd('scrape_ccb.js')
+    if args.yesterday:
+        cmd.append('--yesterday')
+    else:
+        cmd += ['--latest', str(args.latest)]
+    run_script(cmd, 'ccb')
+
+
+register('ccb', '龙集采 (CCB) 招标公告爬虫', ccb_run)
+
+
 # ---- 新增爬虫在此处添加 ----
 # register('newsite', '新网站爬虫', newsite_run)
 
