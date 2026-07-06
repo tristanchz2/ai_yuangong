@@ -119,6 +119,21 @@ def abc_puc_run(args):
 register('abc_puc', '农银e采 (ABC PUC) 招标公告爬虫', abc_puc_run)
 
 
+# ---- icbc 工银集采 ----
+# JS 参数: --latest N, --yesterday, --date
+
+def icbc_run(args):
+    cmd = build_node_cmd('scrape_icbc.js')
+    if args.yesterday:
+        cmd.append('--yesterday')
+    else:
+        cmd += ['--latest', str(args.latest)]
+    run_script(cmd, 'icbc')
+
+
+register('icbc', '工银集采 (ICBC) 招标公告爬虫', icbc_run)
+
+
 # ---- 新增爬虫在此处添加 ----
 # register('newsite', '新网站爬虫', newsite_run)
 
