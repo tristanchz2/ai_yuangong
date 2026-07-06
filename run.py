@@ -1,10 +1,11 @@
 """
-爬虫统一入口 - 单文件版
+爬虫统一入口
 Usage:
-    python3 run.py cfcpn --list 5         # 爬5页列表
-    python3 run.py cfcpn --list all       # 爬全部列表
-    python3 run.py cfcpn --resume         # 断点续爬
-    python3 run.py list                   # 列出所有爬虫
+    python3 run.py list                  # 列出所有爬虫
+    python3 run.py cfcpn --latest 5      # 爬最新5条（测试）
+    python3 run.py ccgp --yesterday      # 爬昨天的数据（生产）
+    python3 run.py all --latest 5        # 全部爬虫，各爬最新5条
+    python3 run.py all --yesterday       # 全部爬虫，各爬昨天数据
 """
 
 import argparse
@@ -21,11 +22,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRAPERS = {}
 
 
-def register(name, description, add_args_fn=None, run_fn=None):
+def register(name, description, run_fn=None):
     """注册一个爬虫"""
     SCRAPERS[name] = {
         'description': description,
-        'add_args': add_args_fn,
         'run': run_fn,
     }
 
@@ -33,7 +33,7 @@ def register(name, description, add_args_fn=None, run_fn=None):
 # ---- Node 查找 ----
 
 def find_node():
-    # Windows common paths
+    # macOS / Linux / Windows common paths
     for p in [
         '/opt/homebrew/bin/node',
         '/usr/local/bin/node',
@@ -45,131 +45,160 @@ def find_node():
     return 'node'
 
 
+def build_node_cmd(script_name):
+    """构造 node 命令前缀"""
+    return [find_node(), os.path.join(BASE_DIR, 'scrapers', script_name)]
+
+
+def run_script(cmd, label):
+    """运行一个爬虫脚本，打印结果"""
+    print(f'[{label}] 运行: {" ".join(cmd)}\n')
+    result = subprocess.run(cmd, cwd=os.path.join(BASE_DIR, 'scrapers'))
+    print(f'[{label}] 退出码: {result.returncode}\n')
+    return result.returncode
+
+
 # ---- cfcpn 金采网 ----
-
-def cfcpn_add_args(parser):
-    parser.add_argument('--list', nargs='?', const='5', metavar='N',
-                        help='先爬 N 页列表（默认5页，传 all 爬全部）')
-    parser.add_argument('--resume', action='store_true', help='断点续爬')
-    parser.add_argument('--begin-date', metavar='DATE', help='开始日期，格式 yyyy-MM-dd')
-    parser.add_argument('--end-date', metavar='DATE', help='结束日期，格式 yyyy-MM-dd')
-    parser.add_argument('--yesterday', action='store_true', help='快捷方式：爬昨天一整天的数据')
-
+# JS 参数: --list N (页数), --begin-date, --end-date, resume
 
 def cfcpn_run(args):
-    script_dir = os.path.join(BASE_DIR, 'scrapers')
-    script_path = os.path.join(script_dir, 'scrape_cfcpn.js')
-    cmd = [find_node(), script_path]
-
-    if getattr(args, 'list', None):
-        cmd += ['--list', args.list]
-    if args.resume:
-        cmd.append('resume')
+    cmd = build_node_cmd('scrape_cfcpn.js')
     if args.yesterday:
-        yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-        cmd += ['--begin-date', yesterday, '--end-date', yesterday]
-    if args.begin_date:
-        cmd += ['--begin-date', args.begin_date]
-    if args.end_date:
-        cmd += ['--end-date', args.end_date]
-
-    print(f'运行: {" ".join(cmd)}\n')
-    sys.exit(subprocess.run(cmd, cwd=script_dir).returncode)
+        y = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+        cmd += ['--begin-date', y, '--end-date', y]
+    else:
+        cmd += ['--list', '1']
+    run_script(cmd, 'cfcpn')
 
 
-register('cfcpn', '金采网 (CFCPN) 采购公告爬虫', cfcpn_add_args, cfcpn_run)
+register('cfcpn', '金采网 (CFCPN) 采购公告爬虫', cfcpn_run)
+
+
+# ---- ccgp 中国政府采购网 ----
+# JS 参数: --list N (页数), --limit N, --begin-date, --end-date, --yesterday
+
+def ccgp_run(args):
+    cmd = build_node_cmd('scrape_ccgp.js')
+    if args.yesterday:
+        cmd.append('--yesterday')
+    else:
+        cmd += ['--list', '1', '--limit', str(args.latest)]
+    run_script(cmd, 'ccgp')
+
+
+register('ccgp', '中国政府采购网 (CCGP) 金融标书爬虫', ccgp_run)
 
 
 # ---- boc_pcm 中银智采 ----
-
-def boc_pcm_add_args(parser):
-    parser.add_argument('--yesterday', action='store_true',
-                        help='爬取昨天发布的公告')
-    parser.add_argument('--latest', nargs='?', const='5', type=int, metavar='N',
-                        help='爬取最新 N 条公告（默认5条）')
-    parser.add_argument('--date', metavar='DATE',
-                        help='爬取指定日期的公告，格式 yyyy-MM-dd')
-
+# JS 参数: --latest N, --yesterday, --date
 
 def boc_pcm_run(args):
-    script_dir = os.path.join(BASE_DIR, 'scrapers')
-    script_path = os.path.join(script_dir, 'scrape_boc_pcm.js')
-    cmd = [find_node(), script_path]
-
+    cmd = build_node_cmd('scrape_boc_pcm.js')
     if args.yesterday:
         cmd.append('--yesterday')
-    elif getattr(args, 'latest', None) is not None:
-        cmd += ['--latest', str(args.latest)]
-    elif args.date:
-        cmd += ['--date', args.date]
     else:
-        # 默认：最新5条
-        cmd += ['--latest', '5']
-
-    print(f'运行: {" ".join(cmd)}\n')
-    sys.exit(subprocess.run(cmd, cwd=script_dir).returncode)
+        cmd += ['--latest', str(args.latest)]
+    run_script(cmd, 'boc_pcm')
 
 
-register('boc_pcm', '中银智采 (BOC PCM) 采购公告爬虫', boc_pcm_add_args, boc_pcm_run)
+register('boc_pcm', '中银智采 (BOC PCM) 采购公告爬虫', boc_pcm_run)
 
 
 # ---- abc_puc 农银e采 ----
-
-def abc_puc_add_args(parser):
-    parser.add_argument('--yesterday', action='store_true',
-                        help='爬取昨天发布的公告')
-    parser.add_argument('--latest', nargs='?', const='5', type=int, metavar='N',
-                        help='爬取最新 N 条公告（默认5条）')
-    parser.add_argument('--date', metavar='DATE',
-                        help='爬取指定日期的公告，格式 yyyy-MM-dd')
-
+# JS 参数: --latest N, --yesterday, --date
 
 def abc_puc_run(args):
-    script_dir = os.path.join(BASE_DIR, 'scrapers')
-    script_path = os.path.join(script_dir, 'scrape_abc_puc.js')
-    cmd = [find_node(), script_path]
-
+    cmd = build_node_cmd('scrape_abc_puc.js')
     if args.yesterday:
         cmd.append('--yesterday')
-    elif getattr(args, 'latest', None) is not None:
-        cmd += ['--latest', str(args.latest)]
-    elif args.date:
-        cmd += ['--date', args.date]
     else:
-        cmd += ['--latest', '5']
-
-    print(f'运行: {" ".join(cmd)}\n')
-    sys.exit(subprocess.run(cmd, cwd=script_dir).returncode)
+        cmd += ['--latest', str(args.latest)]
+    run_script(cmd, 'abc_puc')
 
 
-register('abc_puc', '农银e采 (ABC PUC) 招标公告爬虫', abc_puc_add_args, abc_puc_run)
+register('abc_puc', '农银e采 (ABC PUC) 招标公告爬虫', abc_puc_run)
 
 
 # ---- 新增爬虫在此处添加 ----
-# register('newsite', '新网站爬虫', newsite_add_args, newsite_run)
+# register('newsite', '新网站爬虫', newsite_run)
 
 
 # ---- CLI 入口 ----
 
+def add_common_args(parser):
+    """为每个爬虫子命令添加统一参数"""
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--latest', nargs='?', const=5, type=int, metavar='N',
+                       help='爬取最新 N 条（默认5，用于测试）')
+    group.add_argument('--yesterday', action='store_true',
+                       help='爬取昨天发布的数据（生产模式）')
+
+
 def main():
-    parser = argparse.ArgumentParser(description='爬虫统一入口')
+    parser = argparse.ArgumentParser(
+        description='爬虫统一入口',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  python3 run.py list                  列出所有爬虫
+  python3 run.py cfcpn --latest 5      爬金采网最新5条
+  python3 run.py ccgp --yesterday      爬政府采购网昨天数据
+  python3 run.py all --latest 5        全部爬虫各爬最新5条
+  python3 run.py all --yesterday       全部爬虫各爬昨天数据
+        """,
+    )
     subparsers = parser.add_subparsers(dest='scraper', help='选择爬虫')
 
+    # list 命令
     subparsers.add_parser('list', help='列出所有可用爬虫')
 
+    # all 命令
+    all_parser = subparsers.add_parser('all', help='运行所有爬虫')
+    add_common_args(all_parser)
+
+    # 各爬虫子命令
     for name, info in SCRAPERS.items():
         sub = subparsers.add_parser(name, help=info['description'])
-        if info['add_args']:
-            info['add_args'](sub)
+        add_common_args(sub)
 
-    args, _ = parser.parse_known_args()
+    args = parser.parse_args()
 
+    # 无参数或 list：列出爬虫
     if args.scraper in (None, 'list'):
         print('可用爬虫:')
         for name, info in SCRAPERS.items():
             print(f'  {name:15s} - {info["description"]}')
+        print('\n用法:')
+        print('  python3 run.py <name> --latest 5      爬最新5条（测试）')
+        print('  python3 run.py <name> --yesterday      爬昨天数据（生产）')
+        print('  python3 run.py all --latest 5           全部爬虫各爬最新5条')
+        print('  python3 run.py all --yesterday          全部爬虫各爬昨天数据')
         return
 
+    # 设置默认模式
+    if not args.yesterday and args.latest is None:
+        args.latest = 5
+
+    # all 命令：依次运行所有爬虫
+    if args.scraper == 'all':
+        print(f'=== 运行全部 {len(SCRAPERS)} 个爬虫 ===\n')
+        mode = '昨天数据' if args.yesterday else f'最新 {args.latest} 条'
+        print(f'模式: {mode}\n')
+        failed = []
+        for name, info in SCRAPERS.items():
+            print(f'--- {name}: {info["description"]} ---\n')
+            rc = info['run'](args)
+            if rc != 0:
+                failed.append(name)
+        print(f'\n=== 完成 ===')
+        if failed:
+            print(f'失败: {", ".join(failed)}')
+            sys.exit(1)
+        else:
+            print('全部成功')
+        return
+
+    # 单个爬虫
     info = SCRAPERS.get(args.scraper)
     if not info:
         print(f'未知爬虫: {args.scraper}')

@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 
 const PAGE_SIZE = 10;
+const BASE_URL = 'http://www.cfcpn.com/jcw/sys/index/goUrl?url=modules/sys/login/detail&column=undefined&searchVal=';
 const OUTPUT_JSON = path.join(__dirname, '..', 'row_data', 'cfcpn_data.json');
 const PROGRESS_FILE = path.join(__dirname, 'cfcpn_progress.json');
 
@@ -148,7 +149,8 @@ function saveOutput(rows, total) {
   const jsonOutput = {
     scrapeTime: new Date().toISOString(), total, scraped: rows.length,
     rows: rows.map((r) => ({
-      id: r.id, title: r.noticeTitle, publishTime: r.publishTime,
+      id: r.id, url: BASE_URL + r.id,
+      title: r.noticeTitle, publishTime: r.publishTime,
       purchaser: r.userName, method: r.purchaseTypeLable, region: r.area,
       category: r.labelAllId, tags: r.yxCategoryNames, source: r.noticeSource,
       content: stripHtml(r.noticeContent),
