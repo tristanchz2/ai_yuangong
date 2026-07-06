@@ -33,7 +33,13 @@ def register(name, description, add_args_fn=None, run_fn=None):
 # ---- Node 查找 ----
 
 def find_node():
-    for p in ['/opt/homebrew/bin/node', '/usr/local/bin/node']:
+    # Windows common paths
+    for p in [
+        '/opt/homebrew/bin/node',
+        '/usr/local/bin/node',
+        r'C:\Program Files\nodejs\node.exe',
+        r'C:\Program Files (x86)\nodejs\node.exe',
+    ]:
         if os.path.isfile(p):
             return p
     return 'node'
@@ -72,6 +78,71 @@ def cfcpn_run(args):
 
 
 register('cfcpn', '金采网 (CFCPN) 采购公告爬虫', cfcpn_add_args, cfcpn_run)
+
+
+# ---- boc_pcm 中银智采 ----
+
+def boc_pcm_add_args(parser):
+    parser.add_argument('--yesterday', action='store_true',
+                        help='爬取昨天发布的公告')
+    parser.add_argument('--latest', nargs='?', const='5', type=int, metavar='N',
+                        help='爬取最新 N 条公告（默认5条）')
+    parser.add_argument('--date', metavar='DATE',
+                        help='爬取指定日期的公告，格式 yyyy-MM-dd')
+
+
+def boc_pcm_run(args):
+    script_dir = os.path.join(BASE_DIR, 'scrapers')
+    script_path = os.path.join(script_dir, 'scrape_boc_pcm.js')
+    cmd = [find_node(), script_path]
+
+    if args.yesterday:
+        cmd.append('--yesterday')
+    elif getattr(args, 'latest', None) is not None:
+        cmd += ['--latest', str(args.latest)]
+    elif args.date:
+        cmd += ['--date', args.date]
+    else:
+        # 默认：最新5条
+        cmd += ['--latest', '5']
+
+    print(f'运行: {" ".join(cmd)}\n')
+    sys.exit(subprocess.run(cmd, cwd=script_dir).returncode)
+
+
+register('boc_pcm', '中银智采 (BOC PCM) 采购公告爬虫', boc_pcm_add_args, boc_pcm_run)
+
+
+# ---- abc_puc 农银e采 ----
+
+def abc_puc_add_args(parser):
+    parser.add_argument('--yesterday', action='store_true',
+                        help='爬取昨天发布的公告')
+    parser.add_argument('--latest', nargs='?', const='5', type=int, metavar='N',
+                        help='爬取最新 N 条公告（默认5条）')
+    parser.add_argument('--date', metavar='DATE',
+                        help='爬取指定日期的公告，格式 yyyy-MM-dd')
+
+
+def abc_puc_run(args):
+    script_dir = os.path.join(BASE_DIR, 'scrapers')
+    script_path = os.path.join(script_dir, 'scrape_abc_puc.js')
+    cmd = [find_node(), script_path]
+
+    if args.yesterday:
+        cmd.append('--yesterday')
+    elif getattr(args, 'latest', None) is not None:
+        cmd += ['--latest', str(args.latest)]
+    elif args.date:
+        cmd += ['--date', args.date]
+    else:
+        cmd += ['--latest', '5']
+
+    print(f'运行: {" ".join(cmd)}\n')
+    sys.exit(subprocess.run(cmd, cwd=script_dir).returncode)
+
+
+register('abc_puc', '农银e采 (ABC PUC) 招标公告爬虫', abc_puc_add_args, abc_puc_run)
 
 
 # ---- 新增爬虫在此处添加 ----
