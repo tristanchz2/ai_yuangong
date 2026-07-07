@@ -147,8 +147,8 @@ function stripHtml(s) {
 
 function saveOutput(rows) {
   const jsonOutput = {
+    source: '农银e采',
     scrapeTime: new Date().toISOString(),
-    total: rows.length,
     rows: rows.map((r) => ({
       publishTime: (r.publishTime || r.startTime || '').substring(0, 10),
       noticeType: r.noticeType || MESSAGE_TYPE_MAP[r.messageType] || `类型${r.messageType}`,
@@ -188,31 +188,26 @@ async function main() {
   if (yesterdayIdx >= 0) {
     mode = 'date';
     targetDate = getYesterday();
-    console.log(`📅 模式：爬取昨天的公告 (${targetDate})\n`);
   } else if (dateIdx >= 0) {
     mode = 'date';
     targetDate = args[dateIdx + 1];
     if (!targetDate || !/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
-      console.error('⚠ --date 参数格式错误，应为 yyyy-MM-dd');
+      console.error('✗ --date 参数格式错误，应为 yyyy-MM-dd');
       process.exit(1);
     }
-    console.log(`📅 模式：爬取指定日期的公告 (${targetDate})\n`);
   } else if (latestIdx >= 0) {
     mode = 'latest';
     count = parseInt(args[latestIdx + 1]) || 5;
-    console.log(`📋 模式：爬取最新 ${count} 条公告\n`);
-  } else {
-    console.log(`📋 模式：爬取最新 ${count} 条公告（默认）\n`);
   }
 
-  console.log('🔧 初始化 cycletls (Chrome TLS 指纹)...');
+  console.log('  [初始化] cycletls');
   const cycleTLS = await initCycleTLS();
 
   let allItems = [];
 
   try {
     if (mode === 'latest') {
-      console.log('[1/2] 获取公告列表...');
+      console.log(`  [列表] 最新 ${count} 条`);
       const result = await requestWithBackoff(
         () => fetchList(cycleTLS, 1, Math.max(count, 10)),
         '列表'
@@ -224,11 +219,10 @@ async function main() {
         return;
       }
 
-      console.log(`  API 共 ${result.total} 条，当前页 ${result.records.length} 条`);
       allItems = result.records.slice(0, count);
-      console.log(`  选取前 ${allItems.length} 条\n`);
+      console.log(`    API 共 ${result.total} 条，选取 ${allItems.length} 条`);
     } else {
-      console.log(`[1/2] 获取 ${targetDate} 的公告列表...`);
+      console.log(`  [列表] 日期 ${targetDate}`);
 
       const beginTs = new Date(targetDate + 'T00:00:00+08:00').getTime();
       const endTs = beginTs + 86400000;
@@ -250,18 +244,18 @@ async function main() {
           break;
         }
 
-        if (pageNo === 1) console.log(`  API 共 ${result.total} 条`);
+        if (pageNo === 1) console.log(`    API 共 ${result.total} 条`);
 
         allItems.push(...result.records);
         console.log(
-          `  第 ${pageNo} 页 ✓ (已匹配 ${allItems.length} 条，本页 ${result.records.length} 条)`
+          `    第 ${pageNo} 页 ✓ (${allItems.length} 条匹配)`
         );
 
         if (pageNo >= (result.pages || 1)) foundAll = true;
         pageNo++;
       }
 
-      console.log(`  日期筛选完成: ${allItems.length} 条匹配 ${targetDate}\n`);
+      console.log(`    共 ${allItems.length} 条匹配\n`);
     }
 
     if (allItems.length === 0) {
@@ -272,14 +266,13 @@ async function main() {
     }
 
     // ---- 详情爬取 ----
-    console.log(`[2/2] 爬取 ${allItems.length} 条公告正文...`);
+    console.log(`  [详情] ${allItems.length} 条`);
     let detailOk = 0;
     let detailFail = 0;
 
     for (let i = 0; i < allItems.length; i++) {
       const item = allItems[i];
       const title = item.messageTitle || '';
-      process.stdout.write(`  [${i + 1}/${allItems.length}] ${title.substring(0, 40)}... `);
 
       // 请求间隔，避免触发限频
       if (i > 0) await sleep(3000 + Math.random() * 2000);
@@ -291,39 +284,20 @@ async function main() {
           item.content = content;
           item.publishTime = item.startTime;
           detailOk++;
-          console.log(`✓ (${content.length} 字)`);
+          console.log(`    [${i + 1}/${allItems.length}] ${title.substring(0, 40)}... ✓ (${content.length}字)`);
         } else {
-          // detail 返回了但没有 content 字段，记录可用字段
-          const keys = Object.keys(detail);
-          console.log(`⚠ 无 content 字段 (keys: ${keys.join(', ')})`);
+          console.log(`    [${i + 1}/${allItems.length}] ${title.substring(0, 40)}... ✗`);
           detailFail++;
         }
       } catch (e) {
-        console.log(`✗ ${e.message}`);
+        console.log(`    [${i + 1}/${allItems.length}] ${title.substring(0, 40)}... ✗ ${e.message}`);
         detailFail++;
       }
     }
 
-    console.log(`\n  详情爬取完成: ${detailOk} 成功, ${detailFail} 失败\n`);
-
     // ---- 保存 ----
-    console.log('[保存] 写入 JSON...');
     const output = saveOutput(allItems);
-    console.log(`  ${OUTPUT_JSON}`);
-    console.log(`  共 ${output.total} 条`);
-    console.log('\n✓ 完成！');
-
-    // 打印摘要
-    console.log('\n--- 数据摘要 ---');
-    allItems.forEach((r, i) => {
-      const type = MESSAGE_TYPE_MAP[r.messageType] || `类型${r.messageType}`;
-      const projType = PROJECT_TYPE_MAP[r.projectType] || '';
-      const contentLen = r.content ? r.content.length : 0;
-      const title = r.messageTitle || '';
-      console.log(
-        `  ${i + 1}. [${type}/${projType}] ${title.substring(0, 50)} (${(r.startTime || '').substring(0, 10)}) ${contentLen ? `[${contentLen}字]` : '[仅标题]'}`
-      );
-    });
+    console.log(`\n✓ abc_puc (${output.rows.length}/${output.rows.length})`);
   } finally {
     await cycleTLS.exit();
   }

@@ -148,8 +148,8 @@ function parseDetailDate(html) {
 
 function saveOutput(rows) {
   const jsonOutput = {
+    source: '国开采购网',
     scrapeTime: new Date().toISOString(),
-    total: rows.length,
     rows: rows.map((r) => ({
       publishTime: r.publishTime || r.date || '',
       noticeType: '结果公告',
@@ -189,28 +189,23 @@ async function main() {
   if (yesterdayIdx >= 0) {
     mode = 'date';
     targetDate = getYesterday();
-    console.log(`📅 模式：爬取昨天的公告 (${targetDate})\n`);
   } else if (dateIdx >= 0) {
     mode = 'date';
     targetDate = args[dateIdx + 1];
     if (!targetDate || !/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
-      console.error('⚠ --date 参数格式错误，应为 yyyy-MM-dd');
+      console.error('✗ --date 参数格式错误，应为 yyyy-MM-dd');
       process.exit(1);
     }
-    console.log(`📅 模式：爬取指定日期的公告 (${targetDate})\n`);
   } else if (latestIdx >= 0) {
     mode = 'latest';
     count = parseInt(args[latestIdx + 1]) || 5;
-    console.log(`📋 模式：爬取最新 ${count} 条公告\n`);
-  } else {
-    console.log(`📋 模式：爬取最新 ${count} 条公告（默认）\n`);
   }
 
   let allItems = [];
 
   if (mode === 'latest') {
     // ---- 爬取最新 N 条 ----
-    console.log('[1/2] 获取公告列表...');
+    console.log(`  [列表] 最新 ${count} 条`);
     const html = await requestWithBackoff(
       () => httpGet(`${LIST_BASE}/index.html`),
       '列表'
@@ -222,12 +217,11 @@ async function main() {
       return;
     }
 
-    console.log(`  本页 ${items.length} 条`);
     allItems = items.slice(0, count);
-    console.log(`  选取前 ${allItems.length} 条\n`);
+    console.log(`    本页 ${items.length} 条，选取 ${allItems.length} 条`);
   } else {
     // ---- 按日期爬取 ----
-    console.log(`[1/2] 获取 ${targetDate} 的公告列表...`);
+    console.log(`  [列表] 日期 ${targetDate}`);
     let pageNo = 1;
     let foundAll = false;
 
@@ -260,14 +254,14 @@ async function main() {
       }
 
       console.log(
-        `  第 ${pageNo} 页 ✓ (已匹配 ${allItems.length} 条，本页 ${matchedThisPage}/${items.length} 条)`
+        `    第 ${pageNo} 页 ✓ (${allItems.length} 条匹配)`
       );
 
       if (pageNo >= 142) foundAll = true; // 最大页数
       pageNo++;
     }
 
-    console.log(`  日期筛选完成: ${allItems.length} 条匹配 ${targetDate}\n`);
+    console.log(`    共 ${allItems.length} 条匹配\n`);
   }
 
   if (allItems.length === 0) {
@@ -277,13 +271,12 @@ async function main() {
   }
 
   // ---- 爬取详情 ----
-  console.log(`[2/2] 爬取 ${allItems.length} 条公告正文...`);
+  console.log(`  [详情] ${allItems.length} 条`);
   let detailOk = 0;
   let detailFail = 0;
 
   for (let i = 0; i < allItems.length; i++) {
     const item = allItems[i];
-    process.stdout.write(`  [${i + 1}/${allItems.length}] ${item.title.substring(0, 40)}... `);
 
     if (i > 0) await sleep(1500 + Math.random() * 1000);
 
@@ -299,34 +292,20 @@ async function main() {
         item.content = content;
         if (date) item.publishTime = date;
         detailOk++;
-        console.log(`✓ (${content.length} 字)`);
+        console.log(`    [${i + 1}/${allItems.length}] ${item.title.substring(0, 40)}... ✓ (${content.length}字)`);
       } else {
-        console.log('⚠ 未提取到正文');
+        console.log(`    [${i + 1}/${allItems.length}] ${item.title.substring(0, 40)}... ✗`);
         detailFail++;
       }
     } catch (e) {
-      console.log(`✗ ${e.message}`);
+      console.log(`    [${i + 1}/${allItems.length}] ${item.title.substring(0, 40)}... ✗ ${e.message}`);
       detailFail++;
     }
   }
 
-  console.log(`\n  详情爬取完成: ${detailOk} 成功, ${detailFail} 失败\n`);
-
   // ---- 保存 ----
-  console.log('[保存] 写入 JSON...');
   const output = saveOutput(allItems);
-  console.log(`  ${OUTPUT_JSON}`);
-  console.log(`  共 ${output.total} 条`);
-  console.log('\n✓ 完成！');
-
-  // 打印摘要
-  console.log('\n--- 数据摘要 ---');
-  allItems.forEach((r, i) => {
-    const contentLen = r.content ? r.content.length : 0;
-    console.log(
-      `  ${i + 1}. ${r.title.substring(0, 50)} (${r.date || '未知时间'}) ${contentLen ? `[${contentLen}字]` : '[仅标题]'}`
-    );
-  });
+  console.log(`\n✓ cdb (${output.rows.length}/${output.rows.length})`);
 }
 
 main().catch((e) => {

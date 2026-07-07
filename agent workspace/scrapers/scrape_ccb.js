@@ -132,8 +132,8 @@ async function fetchDetail(id, releaseDate) {
 
 function saveOutput(rows) {
   const jsonOutput = {
+    source: '龙集采',
     scrapeTime: new Date().toISOString(),
-    total: rows.length,
     rows: rows.map((r) => ({
       publishTime: (r.releaseDate || '').substring(0, 10),
       noticeType: CHANNEL_TYPE_MAP[r.channelId] || '招标公告',
@@ -173,27 +173,22 @@ async function main() {
   if (yesterdayIdx >= 0) {
     mode = 'date';
     targetDate = getYesterday();
-    console.log(`📅 模式：爬取昨天的公告 (${targetDate})\n`);
   } else if (dateIdx >= 0) {
     mode = 'date';
     targetDate = args[dateIdx + 1];
     if (!targetDate || !/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
-      console.error('⚠ --date 参数格式错误，应为 yyyy-MM-dd');
+      console.error('✗ --date 参数格式错误，应为 yyyy-MM-dd');
       process.exit(1);
     }
-    console.log(`📅 模式：爬取指定日期的公告 (${targetDate})\n`);
   } else if (latestIdx >= 0) {
     mode = 'latest';
     count = parseInt(args[latestIdx + 1]) || 5;
-    console.log(`📋 模式：爬取最新 ${count} 条公告\n`);
-  } else {
-    console.log(`📋 模式：爬取最新 ${count} 条公告（默认）\n`);
   }
 
   let allItems = [];
 
   if (mode === 'latest') {
-    console.log('[1/2] 获取公告列表...');
+    console.log(`  [列表] 最新 ${count} 条`);
     const items = await requestWithBackoff(
       () => fetchList(1),
       '列表'
@@ -204,11 +199,10 @@ async function main() {
       return;
     }
 
-    console.log(`  第1页 ${items.length} 条`);
     allItems = items.slice(0, count);
-    console.log(`  选取前 ${allItems.length} 条\n`);
+    console.log(`    第1页 ${items.length} 条，选取 ${allItems.length} 条`);
   } else {
-    console.log(`[1/2] 获取 ${targetDate} 的公告列表...`);
+    console.log(`  [列表] 日期 ${targetDate}`);
     let pageNo = 1;
     let foundAll = false;
 
@@ -237,7 +231,7 @@ async function main() {
       }
 
       console.log(
-        `  第 ${pageNo} 页 ✓ (已匹配 ${allItems.length} 条，本页 ${matchedThisPage}/${items.length} 条)`
+        `    第 ${pageNo} 页 ✓ (${allItems.length} 条匹配)`
       );
 
       // 如果本页数据不足 PAGE_SIZE 条，说明是最后一页
@@ -245,7 +239,7 @@ async function main() {
       pageNo++;
     }
 
-    console.log(`  日期筛选完成: ${allItems.length} 条匹配 ${targetDate}\n`);
+    console.log(`    共 ${allItems.length} 条匹配\n`);
   }
 
   if (allItems.length === 0) {
@@ -255,13 +249,12 @@ async function main() {
   }
 
   // ---- 爬取详情 ----
-  console.log(`[2/2] 爬取 ${allItems.length} 条公告正文...`);
+  console.log(`  [详情] ${allItems.length} 条`);
   let detailOk = 0;
   let detailFail = 0;
 
   for (let i = 0; i < allItems.length; i++) {
     const item = allItems[i];
-    process.stdout.write(`  [${i + 1}/${allItems.length}] ${item.title.substring(0, 40)}... `);
 
     if (i > 0) await sleep(1000 + Math.random() * 1000);
 
@@ -275,35 +268,20 @@ async function main() {
       if (content) {
         item.content = content;
         detailOk++;
-        console.log(`✓ (${content.length} 字)`);
+        console.log(`    [${i + 1}/${allItems.length}] ${item.title.substring(0, 40)}... ✓ (${content.length}字)`);
       } else {
-        console.log('⚠ 未提取到正文');
+        console.log(`    [${i + 1}/${allItems.length}] ${item.title.substring(0, 40)}... ✗`);
         detailFail++;
       }
     } catch (e) {
-      console.log(`✗ ${e.message}`);
+      console.log(`    [${i + 1}/${allItems.length}] ${item.title.substring(0, 40)}... ✗ ${e.message}`);
       detailFail++;
     }
   }
 
-  console.log(`\n  详情爬取完成: ${detailOk} 成功, ${detailFail} 失败\n`);
-
   // ---- 保存 ----
-  console.log('[保存] 写入 JSON...');
   const output = saveOutput(allItems);
-  console.log(`  ${OUTPUT_JSON}`);
-  console.log(`  共 ${output.total} 条`);
-  console.log('\n✓ 完成！');
-
-  // 打印摘要
-  console.log('\n--- 数据摘要 ---');
-  allItems.forEach((r, i) => {
-    const type = CHANNEL_TYPE_MAP[r.channelId] || '招标公告';
-    const contentLen = r.content ? r.content.length : 0;
-    console.log(
-      `  ${i + 1}. [${type}] ${r.title.substring(0, 50)} (${(r.releaseDate || '').substring(0, 10)}) ${contentLen ? `[${contentLen}字]` : '[仅标题]'}`
-    );
-  });
+  console.log(`\n✓ ccb (${output.rows.length}/${output.rows.length})`);
 }
 
 main().catch((e) => {
