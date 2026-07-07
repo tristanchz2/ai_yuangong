@@ -14,8 +14,10 @@
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { stripHtml } = require('./utility/stripHtml');
+const { JsonWriter } = require('./utility/JsonWriter');
 
-const OUTPUT_JSON = path.join(__dirname, '..', '..', 'row_data', 'ccb_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', '..', 'raw_data', 'ccb_data.json');
 const SITE_BASE = 'https://ibuy.ccb.com';
 const CHANNEL_ID = '355'; // 招标公告
 
@@ -76,20 +78,6 @@ async function requestWithBackoff(requestFn, label) {
   }
 }
 
-// ===================== HTML 解析 =====================
-
-function stripHtml(s) {
-  if (!s) return '';
-  return s
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#\d+;/g, '')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
 // ===================== 类型映射 =====================
 
 const CHANNEL_TYPE_MAP = {
@@ -126,22 +114,6 @@ async function fetchDetail(id, releaseDate) {
   const url = `${SITE_BASE}/json/contentFile/${CHANNEL_ID}/${year}/${id}.json?t=1`;
   const data = await httpGet(url);
   return data.data || data;
-}
-
-// ===================== 保存输出 =====================
-
-function saveOutput(rows) {
-  const jsonOutput = {
-    source: '龙集采',
-    scrapeTime: new Date().toISOString(),
-    rows: rows.map((r) => ({
-      publishTime: (r.releaseDate || '').substring(0, 10),
-      noticeType: CHANNEL_TYPE_MAP[r.channelId] || '招标公告',
-      content: r.content || r.title,
-    })),
-  };
-  fs.writeFileSync(OUTPUT_JSON, JSON.stringify(jsonOutput, null, 2), 'utf8');
-  return jsonOutput;
 }
 
 // ===================== 日期工具 =====================
@@ -244,14 +216,18 @@ async function main() {
 
   if (allItems.length === 0) {
     console.log('✓ 无匹配数据');
-    saveOutput([]);
+    new JsonWriter(OUTPUT_JSON, { source: '龙集采', scrapeTime: new Date().toISOString() });
     return;
   }
 
+  // ---- 初始化增量写入器 ----
+  const writer = new JsonWriter(OUTPUT_JSON, {
+    source: '龙集采',
+    scrapeTime: new Date().toISOString(),
+  });
+
   // ---- 爬取详情 ----
   console.log(`  [详情] ${allItems.length} 条`);
-  let detailOk = 0;
-  let detailFail = 0;
 
   for (let i = 0; i < allItems.length; i++) {
     const item = allItems[i];
@@ -267,21 +243,22 @@ async function main() {
       const content = stripHtml(detail.content || '');
       if (content) {
         item.content = content;
-        detailOk++;
         console.log(`    [${i + 1}/${allItems.length}] ${item.title.substring(0, 40)}... ✓ (${content.length}字)`);
       } else {
         console.log(`    [${i + 1}/${allItems.length}] ${item.title.substring(0, 40)}... ✗`);
-        detailFail++;
       }
     } catch (e) {
       console.log(`    [${i + 1}/${allItems.length}] ${item.title.substring(0, 40)}... ✗ ${e.message}`);
-      detailFail++;
     }
+
+    writer.addRow({
+      publishTime: (item.releaseDate || '').substring(0, 10),
+      noticeType: CHANNEL_TYPE_MAP[item.channelId] || '招标公告',
+      content: item.content || item.title,
+    });
   }
 
-  // ---- 保存 ----
-  const output = saveOutput(allItems);
-  console.log(`\n✓ ccb (${output.rows.length}/${output.rows.length})`);
+  console.log(`\n✓ ccb (${writer.count}/${writer.count})`);
 }
 
 main().catch((e) => {

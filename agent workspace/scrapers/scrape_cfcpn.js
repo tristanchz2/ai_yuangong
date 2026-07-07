@@ -11,11 +11,12 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { stripHtml } = require('./utility/stripHtml');
+const { JsonWriter } = require('./utility/JsonWriter');
 
 const PAGE_SIZE = 10;
 const BASE_URL = 'http://www.cfcpn.com/jcw/sys/index/goUrl?url=modules/sys/login/detail&column=undefined&searchVal=';
-const OUTPUT_JSON = path.join(__dirname, '..', '..', 'row_data', 'cfcpn_data.json');
-const PROGRESS_FILE = path.join(__dirname, 'cfcpn_progress.json');
+const OUTPUT_JSON = path.join(__dirname, '..', '..', 'raw_data', 'cfcpn_data.json');
 
 // ===================== 请求层 =====================
 
@@ -124,58 +125,23 @@ function fetchDetail(id) {
   return apiRequest({ id, isDetail: '1' });
 }
 
-// ===================== HTML 处理 =====================
+// ===================== 辅助函数 =====================
 
-function stripHtml(html) {
-  if (!html) return '';
-  let t = html;
-  t = t.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-  t = t.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ');
-  t = t.replace(/&ldquo;/g, '\u201C').replace(/&rdquo;/g, '\u201D').replace(/&mdash;/g, '\u2014');
-  t = t.replace(/<br\s*\/?>/gi, '\n');
-  t = t.replace(/<\/?(p|div|li|tr|h[1-6]|table|section|article)\b[^>]*>/gi, '\n');
-  t = t.replace(/<[^>]+>/g, '');
-  t = t.replace(/[ \t]+/g, ' ');
-  t = t.replace(/\n[ \t]+/g, '\n');
-  t = t.replace(/\n{3,}/g, '\n\n');
-  return t.trim();
-}
-
-// ===================== 进度管理 =====================
-
-function saveProgress(p) { fs.writeFileSync(PROGRESS_FILE, JSON.stringify(p, null, 2), 'utf8'); }
-
-function saveOutput(rows, total) {
-  const jsonOutput = {
-    source: '金采网',
-    scrapeTime: new Date().toISOString(),
-    rows: rows.map((r) => ({
-      id: r.id, url: BASE_URL + r.id,
-      title: r.noticeTitle, publishTime: r.publishTime,
-      purchaser: r.userName, method: r.purchaseTypeLable, region: r.area,
-      category: r.labelAllId, tags: r.yxCategoryNames, source: r.noticeSource,
-      content: stripHtml(r.noticeContent),
-    })),
+function rowToOutput(r) {
+  return {
+    id: r.id, url: BASE_URL + r.id,
+    title: r.noticeTitle, publishTime: r.publishTime,
+    purchaser: r.userName, method: r.purchaseTypeLable, region: r.area,
+    category: r.labelAllId, tags: r.yxCategoryNames, source: r.noticeSource,
+    content: stripHtml(r.noticeContent),
   };
-  fs.writeFileSync(OUTPUT_JSON, JSON.stringify(jsonOutput, null, 2), 'utf8');
 }
 
 function loadExistingData() {
-  if (fs.existsSync(PROGRESS_FILE)) {
-    try { const p = JSON.parse(fs.readFileSync(PROGRESS_FILE, 'utf8')); if (p.rows?.length) return p; } catch {}
-  }
   if (fs.existsSync(OUTPUT_JSON)) {
     try {
       const j = JSON.parse(fs.readFileSync(OUTPUT_JSON, 'utf8'));
-      if (j.rows?.length) {
-        const rows = j.rows.map((r) => ({
-          id: r.id, noticeTitle: r.title, publishTime: r.publishTime,
-          userName: r.purchaser, purchaseTypeLable: r.method, area: r.region,
-          labelAllId: r.category, yxCategoryNames: r.tags, noticeSource: r.source,
-          noticeContent: r.content ? '__loaded__' : '',
-        }));
-        return { rows, total: j.total, nextDetailIdx: 0 };
-      }
+      if (j.rows?.length) return j;
     } catch {}
   }
   return null;
@@ -222,7 +188,6 @@ async function main() {
         console.log(`    已超出日期范围，停止翻页`);
         break;
       }
-      saveProgress({ rows: allRows, total: allRows.length, nextDetailIdx: 0 });
     }
     if (listPages === 'all' || maxPages > 1) {
       console.log(`    共 ${allRows.length} 条`);
@@ -234,53 +199,61 @@ async function main() {
     }
   }
 
-  // ---- 加载已有数据 ----
+  // ---- 加载已有数据 / 续爬 ----
+  let writer = null;
   if (allRows.length === 0) {
     if (listPages) {
       console.log('✓ 该日期范围内无数据');
       return;
     }
+    const existing = loadExistingData();
+    if (!existing?.rows?.length) {
+      if (isResume) { console.error('⚠ 无进度文件'); process.exit(1); }
+      else { console.error('⚠ 无数据文件，用 --list 5 先爬列表'); process.exit(1); }
+    }
     if (isResume) {
-      const p = loadExistingData();
-      if (!p?.rows) { console.error('⚠ 无进度文件'); process.exit(1); }
-      allRows = p.rows; total = p.total || allRows.length; startDetailIdx = p.nextDetailIdx || 0;
-      console.log(`♻ 续爬: ${allRows.length} 条, 正文从第 ${startDetailIdx + 1} 条\n`);
+      writer = new JsonWriter(OUTPUT_JSON, { source: '金采网', scrapeTime: new Date().toISOString() });
+      existing.rows.forEach((r) => writer.addRow(r));
+      startDetailIdx = existing.rows.findIndex((r) => !r.content);
+      if (startDetailIdx < 0) startDetailIdx = existing.rows.length;
+      console.log(`♻ 续爬: ${existing.rows.length} 条, 正文从第 ${startDetailIdx + 1} 条\n`);
     } else {
-      const e = loadExistingData();
-      if (!e?.rows) { console.error('⚠ 无数据文件，用 --list 5 先爬列表'); process.exit(1); }
-      allRows = e.rows; total = e.total || allRows.length;
-      console.log(`📂 加载 ${allRows.length} 条\n`);
+      writer = new JsonWriter(OUTPUT_JSON, { source: '金采网', scrapeTime: new Date().toISOString() });
+      existing.rows.forEach((r) => writer.addRow(r));
+      console.log(`📂 加载 ${existing.rows.length} 条\n`);
+    }
+    allRows = existing.rows; // already in output format
+  } else {
+    // 从列表阶段的数据初始化写入器
+    writer = new JsonWriter(OUTPUT_JSON, { source: '金采网', scrapeTime: new Date().toISOString() });
+    for (const row of allRows) {
+      writer.addRow(rowToOutput(row));
     }
   }
 
   // ---- 抓正文 ----
-  console.log(`  [详情] ${allRows.length} 条`);
+  console.log(`  [详情] ${writer.count} 条`);
 
-  for (let i = startDetailIdx; i < allRows.length; i++) {
-    const row = allRows[i];
-    if (row.noticeContent && row.noticeContent !== '__loaded__') continue;
+  for (let i = startDetailIdx; i < writer.count; i++) {
+    const existingRow = writer.rows[i];
+    if (existingRow.content && existingRow.content !== stripHtml('')) continue;
 
     await sleep(2000);
 
-    const detail = await requestWithBackoff(() => fetchDetail(row.id), `正文${i + 1}`);
+    const detail = await requestWithBackoff(() => fetchDetail(allRows[i]?.id || existingRow.id), `正文${i + 1}`);
+    let content = '';
     if (detail?.result && detail.rows?.[0]) {
-      row.noticeContent = detail.rows[0].noticeContent || '';
-    } else {
-      row.noticeContent = '';
+      content = stripHtml(detail.rows[0].noticeContent || '');
     }
 
-    const st = row.noticeContent ? '✓' : '✗';
-    console.log(`    [${i + 1}/${allRows.length}] ${row.noticeTitle?.substring(0, 40)}... ${st}`);
+    const st = content ? '✓' : '✗';
+    console.log(`    [${i + 1}/${writer.count}] ${(existingRow.title || '').substring(0, 40)}... ${st}`);
 
-    if ((i + 1) % 5 === 0 || i === allRows.length - 1) {
-      saveProgress({ rows: allRows, total, nextDetailIdx: i + 1 });
-      saveOutput(allRows, total);
-    }
+    // 每条立即写入磁盘
+    writer.setRow(i, { ...existingRow, content });
   }
 
-  saveOutput(allRows, total);
-  if (fs.existsSync(PROGRESS_FILE)) fs.unlinkSync(PROGRESS_FILE);
-  console.log(`\n✓ cfcpn (${allRows.length}/${allRows.length})`);
+  console.log(`\n✓ cfcpn (${writer.count}/${writer.count})`);
 }
 
 main().catch((e) => { console.error('失败:', e.message); process.exit(1); });

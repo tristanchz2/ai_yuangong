@@ -13,8 +13,10 @@
 const initCycleTLS = require('cycletls');
 const fs = require('fs');
 const path = require('path');
+const { stripHtml } = require('./utility/stripHtml');
+const { JsonWriter } = require('./utility/JsonWriter');
 
-const OUTPUT_JSON = path.join(__dirname, '..', '..', 'row_data', 'abc_puc_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', '..', 'raw_data', 'abc_puc_data.json');
 const BASE_URL = 'https://jc.abchina.com.cn/gateway/puc/portalMessage';
 
 // Chrome TLS 指纹 (JA3) — 服务端 WAF 通过 JA3 识别非浏览器请求
@@ -131,34 +133,6 @@ const PROJECT_TYPE_MAP = {
   3: '工程',
 };
 
-// ===================== 保存输出 =====================
-
-function stripHtml(s) {
-  if (!s) return '';
-  return s
-    .replace(/<[^>]+>/g, '')                  // 去掉所有 HTML 标签
-    .replace(/&nbsp;/g, ' ')                  // &nbsp; → 空格
-    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&').replace(/&quot;/g, '"')
-    .replace(/[ \t]+/g, ' ')                  // 连续空格合并
-    .replace(/\n{3,}/g, '\n\n')              // 连续空行合并
-    .trim();
-}
-
-function saveOutput(rows) {
-  const jsonOutput = {
-    source: '农银e采',
-    scrapeTime: new Date().toISOString(),
-    rows: rows.map((r) => ({
-      publishTime: (r.publishTime || r.startTime || '').substring(0, 10),
-      noticeType: r.noticeType || MESSAGE_TYPE_MAP[r.messageType] || `类型${r.messageType}`,
-      content: stripHtml(r.content) || stripHtml(r.messageTitle),
-    })),
-  };
-  fs.writeFileSync(OUTPUT_JSON, JSON.stringify(jsonOutput, null, 2), 'utf8');
-  return jsonOutput;
-}
-
 // ===================== 日期工具 =====================
 
 function formatDate(d) {
@@ -260,21 +234,24 @@ async function main() {
 
     if (allItems.length === 0) {
       console.log('✓ 无匹配数据');
-      saveOutput([]);
+      new JsonWriter(OUTPUT_JSON, { source: '农银e采', scrapeTime: new Date().toISOString() });
       await cycleTLS.exit();
       return;
     }
 
+    // ---- 初始化增量写入器 ----
+    const writer = new JsonWriter(OUTPUT_JSON, {
+      source: '农银e采',
+      scrapeTime: new Date().toISOString(),
+    });
+
     // ---- 详情爬取 ----
     console.log(`  [详情] ${allItems.length} 条`);
-    let detailOk = 0;
-    let detailFail = 0;
 
     for (let i = 0; i < allItems.length; i++) {
       const item = allItems[i];
       const title = item.messageTitle || '';
 
-      // 请求间隔，避免触发限频
       if (i > 0) await sleep(3000 + Math.random() * 2000);
 
       try {
@@ -283,21 +260,22 @@ async function main() {
         if (content) {
           item.content = content;
           item.publishTime = item.startTime;
-          detailOk++;
           console.log(`    [${i + 1}/${allItems.length}] ${title.substring(0, 40)}... ✓ (${content.length}字)`);
         } else {
           console.log(`    [${i + 1}/${allItems.length}] ${title.substring(0, 40)}... ✗`);
-          detailFail++;
         }
       } catch (e) {
         console.log(`    [${i + 1}/${allItems.length}] ${title.substring(0, 40)}... ✗ ${e.message}`);
-        detailFail++;
       }
+
+      writer.addRow({
+        publishTime: (item.publishTime || item.startTime || '').substring(0, 10),
+        noticeType: item.noticeType || MESSAGE_TYPE_MAP[item.messageType] || `类型${item.messageType}`,
+        content: stripHtml(item.content) || stripHtml(item.messageTitle),
+      });
     }
 
-    // ---- 保存 ----
-    const output = saveOutput(allItems);
-    console.log(`\n✓ abc_puc (${output.rows.length}/${output.rows.length})`);
+    console.log(`\n✓ abc_puc (${writer.count}/${writer.count})`);
   } finally {
     await cycleTLS.exit();
   }

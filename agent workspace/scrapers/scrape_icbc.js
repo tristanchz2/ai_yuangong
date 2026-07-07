@@ -13,8 +13,10 @@
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { stripHtml } = require('./utility/stripHtml');
+const { JsonWriter } = require('./utility/JsonWriter');
 
-const OUTPUT_JSON = path.join(__dirname, '..', '..', 'row_data', 'icbc_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', '..', 'raw_data', 'icbc_data.json');
 const HOSTNAME = 'jc.icbc.com.cn';
 const API_PATH = '/app/queryPortalNoticeInfoPage';
 
@@ -203,58 +205,6 @@ function extractDate(raw) {
   return `${raw.substring(0, 4)}-${raw.substring(4, 6)}-${raw.substring(6, 8)}`;
 }
 
-// ===================== HTML 转纯文本 =====================
-
-/**
- * 将 HTML 转为纯文本
- * - 去除所有标签
- * - 将 &nbsp; 等实体转义为空格
- * - 合并多余空白行
- */
-function stripHtml(html) {
-  if (!html) return '';
-  return html
-    // <br> / <p> / <div> 等块级元素转为换行
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<\/div>/gi, '\n')
-    .replace(/<\/li>/gi, '\n')
-    // 去除所有标签
-    .replace(/<[^>]+>/g, '')
-    // 常见 HTML 实体
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    // 合并连续空格为单个
-    .replace(/[ \t]+/g, ' ')
-    // 合并连续空行为单个
-    .replace(/\n\s*\n/g, '\n')
-    .trim();
-}
-
-// ===================== 保存输出 =====================
-
-function saveOutput(rows) {
-  const jsonOutput = {
-    source: '工银集采',
-    scrapeTime: new Date().toISOString(),
-    rows: rows.map((r) => ({
-      publishTime: formatIssueDate(r.issueDate),
-      title: r.noticeTitle,
-      branch: r.structName,
-      projType: r.projTypeName,
-      status: r.noticeStatus,
-      sourceUrl: r.noticeUrl || '',
-      content: stripHtml(r._content),
-    })),
-  };
-  fs.writeFileSync(OUTPUT_JSON, JSON.stringify(jsonOutput, null, 2), 'utf8');
-  return jsonOutput;
-}
-
 // ===================== 主流程 =====================
 
 async function main() {
@@ -342,9 +292,15 @@ async function main() {
 
   if (allItems.length === 0) {
     console.log('✓ 无匹配数据');
-    saveOutput([]);
+    new JsonWriter(OUTPUT_JSON, { source: '工银集采', scrapeTime: new Date().toISOString() });
     return;
   }
+
+  // ---- 初始化增量写入器 ----
+  const writer = new JsonWriter(OUTPUT_JSON, {
+    source: '工银集采',
+    scrapeTime: new Date().toISOString(),
+  });
 
   // ---- 爬取详情 ----
   console.log(`  [详情] ${allItems.length} 条`);
@@ -373,11 +329,20 @@ async function main() {
     console.log(
       `    [${i + 1}/${allItems.length}] ${item.noticeTitle.substring(0, 40)}... ${st}`
     );
+
+    // 每条爬完后立即写入磁盘
+    writer.addRow({
+      publishTime: formatIssueDate(item.issueDate),
+      title: item.noticeTitle,
+      branch: item.structName,
+      projType: item.projTypeName,
+      status: item.noticeStatus,
+      sourceUrl: item.noticeUrl || '',
+      content: stripHtml(item._content),
+    });
   }
 
-  // ---- 保存 ----
-  const output = saveOutput(allItems);
-  console.log(`\n✓ icbc (${output.rows.length}/${output.rows.length})`);
+  console.log(`\n✓ icbc (${writer.count}/${writer.count})`);
 }
 
 main().catch((e) => {
