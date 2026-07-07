@@ -17,6 +17,11 @@ from datetime import datetime, timedelta
 
 SCRAPERS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scrapers')
 
+# raw_data 输出目录不存在时自动创建（JS 爬虫写入目标）
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RAW_DATA_DIR = os.path.join(PROJECT_ROOT, 'raw_data')
+os.makedirs(RAW_DATA_DIR, exist_ok=True)
+
 
 # ---- 爬虫注册表 ----
 
@@ -54,7 +59,7 @@ def build_node_cmd(script_name):
 def run_script(cmd, label, capture=False):
     """运行一个爬虫脚本"""
     if capture:
-        result = subprocess.run(cmd, cwd=SCRAPERS_DIR, capture_output=True, text=True)
+        result = subprocess.run(cmd, cwd=SCRAPERS_DIR, capture_output=True, text=True, encoding='utf-8')
         return result.returncode, result.stdout
     else:
         result = subprocess.run(cmd, cwd=SCRAPERS_DIR)
@@ -234,7 +239,7 @@ def main():
         results = {}  # name -> rc
         for name, info in SCRAPERS.items():
             desc = info['description'].split('(')[0].strip()
-            print(f'📋 {name} - {desc}')
+            print(f'[>] {name} - {desc}')
             rc, output = info['run'](args, capture=True)
             # Print captured output indented
             for line in output.splitlines():
@@ -248,10 +253,10 @@ def main():
         fail_count = 0
         for name, rc in results.items():
             if rc == 0:
-                print(f'  {name:12s} ✓')
+                print(f'  {name:12s} [OK]')
                 success_count += 1
             else:
-                print(f'  {name:12s} ✗')
+                print(f'  {name:12s} [FAIL]')
                 fail_count += 1
         print(f'成功: {success_count}  失败: {fail_count}')
         if fail_count > 0:
@@ -265,7 +270,7 @@ def main():
         sys.exit(1)
 
     desc = info['description'].split('(')[0].strip()
-    print(f'📋 {args.scraper} - {desc}')
+    print(f'[>] {args.scraper} - {desc}')
     rc, _ = info['run'](args)
     sys.exit(rc)
 

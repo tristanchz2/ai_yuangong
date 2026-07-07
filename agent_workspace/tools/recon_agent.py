@@ -6,7 +6,7 @@ import json
 from browser_use import Agent
 
 async def execute(prompt: str, url: str, output_file: str):
-    print(f"🚀 browser-use 启动，执行指令：\n{prompt}\n")
+    print(f"[>] browser-use 启动，执行指令：\n{prompt}\n")
     
     agent = Agent(
         task=prompt,
@@ -21,7 +21,7 @@ async def execute(prompt: str, url: str, output_file: str):
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(result.final_result())
     
-    print(f"✅ 执行完成，结果已写入 {output_file}")
+    print(f"[OK] 执行完成，结果已写入 {output_file}")
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
