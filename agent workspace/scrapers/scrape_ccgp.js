@@ -15,11 +15,12 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const { URL } = require('url');
+const { stripHtml } = require('./utility/stripHtml');
+const { JsonWriter } = require('./utility/JsonWriter');
 
 // ===================== 配置 =====================
 
-const OUTPUT_JSON = path.join(__dirname, '..', '..', 'row_data', 'ccgp_data.json');
-const PROGRESS_FILE = path.join(__dirname, 'ccgp_progress.json');
+const OUTPUT_JSON = path.join(__dirname, '..', '..', 'raw_data', 'ccgp_data.json');
 
 // 搜索关键词
 const FINANCE_KEYWORDS = ['银行', '保险', '证券'];
@@ -249,12 +250,15 @@ async function main() {
   let processedUrls = new Set();
   let startKeywordIdx = 0;
 
-  if (isResume && fs.existsSync(PROGRESS_FILE)) {
-    const progress = JSON.parse(fs.readFileSync(PROGRESS_FILE, 'utf8'));
-    allEntries = progress.entries || [];
-    processedUrls = new Set(allEntries.map(e => e.url));
-    startKeywordIdx = progress.keywordIdx || 0;
-    console.log(`♻ 续爬: ${allEntries.length} 条已处理, 从关键词 #${startKeywordIdx}\n`);
+  if (isResume) {
+    try {
+      const existing = JSON.parse(fs.readFileSync(OUTPUT_JSON, 'utf8'));
+      if (existing.rows?.length) {
+        allEntries = existing.rows;
+        processedUrls = new Set(allEntries.map(e => e.url));
+        console.log(`♻ 续爬: ${allEntries.length} 条已处理\n`);
+      }
+    } catch {}
   }
 
   for (let ki = startKeywordIdx; ki < FINANCE_KEYWORDS.length; ki++) {
@@ -312,10 +316,6 @@ async function main() {
     }
 
     if (limit && allEntries.length >= limit) break;
-
-    fs.writeFileSync(PROGRESS_FILE, JSON.stringify({
-      entries: allEntries, keywordIdx: ki + 1, phase: 'search'
-    }, null, 2), 'utf8');
   }
 
   // 按日期排序，如果有限制则截断
@@ -326,46 +326,18 @@ async function main() {
 
   if (allEntries.length === 0) {
     console.log('  ✓ 该日期范围内无数据');
-    if (fs.existsSync(PROGRESS_FILE)) fs.unlinkSync(PROGRESS_FILE);
+    new JsonWriter(OUTPUT_JSON, { source: '中国政府采购网', scrapeTime: new Date().toISOString() });
     return;
   }
 
-  // ---- Phase 2: 详情页（仅抓正文） ----
-  console.log(`  [详情] ${allEntries.length} 条`);
-
-  for (let i = 0; i < allEntries.length; i++) {
-    const entry = allEntries[i];
-    if (entry.detailScraped) continue;
-    if (i > 0) await sleep(DETAIL_DELAY);
-
-    try {
-      const resp = await fetchUrl(entry.url);
-      const detail = parseDetailPage(resp.data);
-      entry.content = detail.content.substring(0, 5000);
-      entry.detailScraped = true;
-      console.log(`    [${i + 1}/${allEntries.length}] ${entry.title.substring(0, 40)}... ✓`);
-    } catch (e) {
-      entry.detailScraped = true;
-      entry.detailError = e.message;
-      console.log(`    [${i + 1}/${allEntries.length}] ${entry.title.substring(0, 40)}... ✗ ${e.message}`);
-    }
-
-    if ((i + 1) % 5 === 0 || i === allEntries.length - 1) {
-      fs.writeFileSync(PROGRESS_FILE, JSON.stringify({
-        entries: allEntries, keywordIdx: FINANCE_KEYWORDS.length, phase: 'detail',
-        detailIdx: i + 1
-      }, null, 2), 'utf8');
-    }
-  }
-
-  // ---- 去重 + 保存 ----
-  const deduped = deduplicateByProject(allEntries);
-
-  const output = {
+  // ---- 初始化增量写入器 ----
+  const writer = new JsonWriter(OUTPUT_JSON, {
     source: '中国政府采购网',
     scrapeTime: new Date().toISOString(),
-    rows: deduped.map(e => ({
-      title: e.title,
+  });
+  for (const e of allEntries) {
+    writer.addRow({
+      title: stripHtml(e.title),
       url: e.url,
       date: e.date,
       purchaser: e.purchaser,
@@ -373,13 +345,54 @@ async function main() {
       bidType: e.bidType,
       region: e.region,
       category: e.category,
-      content: e.content || '',
-    })),
-  };
+      content: '',
+    });
+  }
 
-  fs.writeFileSync(OUTPUT_JSON, JSON.stringify(output, null, 2), 'utf8');
-  if (fs.existsSync(PROGRESS_FILE)) fs.unlinkSync(PROGRESS_FILE);
-  console.log(`\n✓ ccgp (${deduped.length}/${deduped.length})`);
+  // ---- Phase 2: 详情页（仅爬正文） ----
+  console.log(`  [详情] ${writer.count} 条`);
+
+  for (let i = 0; i < writer.count; i++) {
+    const entry = writer.rows[i];
+    if (entry.content) continue;
+    if (i > 0) await sleep(DETAIL_DELAY);
+
+    try {
+      const resp = await fetchUrl(entry.url);
+      const detail = parseDetailPage(resp.data);
+      const content = stripHtml(detail.content).substring(0, 5000);
+      console.log(`    [${i + 1}/${writer.count}] ${entry.title.substring(0, 40)}... ✓`);
+      writer.setRow(i, { ...entry, content });
+    } catch (e) {
+      console.log(`    [${i + 1}/${writer.count}] ${entry.title.substring(0, 40)}... ✗ ${e.message}`);
+    }
+  }
+
+  // ---- 去重 + 最终写入 ----
+  const rawEntries = writer.rows.map((r, i) => ({
+    ...allEntries[i],
+    content: r.content || allEntries[i]?.content || '',
+  }));
+  const deduped = deduplicateByProject(rawEntries);
+
+  const finalWriter = new JsonWriter(OUTPUT_JSON, {
+    source: '中国政府采购网',
+    scrapeTime: new Date().toISOString(),
+  });
+  for (const e of deduped) {
+    finalWriter.addRow({
+      title: stripHtml(e.title),
+      url: e.url,
+      date: e.date,
+      purchaser: e.purchaser,
+      agent: e.agent,
+      bidType: e.bidType,
+      region: e.region,
+      category: e.category,
+      content: stripHtml(e.content || ''),
+    });
+  }
+  console.log(`\n✓ ccgp (${finalWriter.count}/${finalWriter.count})`);
 }
 
 main().catch(e => { console.error('失败:', e.message); process.exit(1); });

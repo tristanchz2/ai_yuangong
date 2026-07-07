@@ -11,8 +11,10 @@
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { stripHtml } = require('./utility/stripHtml');
+const { JsonWriter } = require('./utility/JsonWriter');
 
-const OUTPUT_JSON = path.join(__dirname, '..', '..', 'row_data', 'boc_pcm_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', '..', 'raw_data', 'boc_pcm_data.json');
 const BASE_URL = '/pcm/c-pcm-web/C08411SUP000/v1/SupplierEnroll/client';
 const HOSTNAME = 'ctpch.fmscop.bankofchina.com';
 
@@ -203,22 +205,6 @@ const NOTICE_TYPE_MAP = {
   '3': '结果公告',
 };
 
-// ===================== 保存输出 =====================
-
-function saveOutput(rows) {
-  const jsonOutput = {
-    source: '中银智采',
-    scrapeTime: new Date().toISOString(),
-    rows: rows.map((r) => ({
-      publishTime: r.ancmAncDt,
-      noticeType: NOTICE_TYPE_MAP[r.noticeType] || r.noticeType,
-      content: r.ancmCntnt || '',
-    })),
-  };
-  fs.writeFileSync(OUTPUT_JSON, JSON.stringify(jsonOutput, null, 2), 'utf8');
-  return jsonOutput;
-}
-
 // ===================== 日期工具 =====================
 
 function formatDate(d) {
@@ -329,9 +315,15 @@ async function main() {
 
   if (allItems.length === 0) {
     console.log('✓ 无匹配数据');
-    saveOutput([]);
+    new JsonWriter(OUTPUT_JSON, { source: '中银智采', scrapeTime: new Date().toISOString() });
     return;
   }
+
+  // ---- 初始化增量写入器 ----
+  const writer = new JsonWriter(OUTPUT_JSON, {
+    source: '中银智采',
+    scrapeTime: new Date().toISOString(),
+  });
 
   // ---- 爬取详情 ----
   console.log(`  [详情] ${allItems.length} 条`);
@@ -339,41 +331,37 @@ async function main() {
   for (let i = 0; i < allItems.length; i++) {
     const item = allItems[i];
 
-    if (item.ancmCntnt) {
-      console.log(
-        `    [${i + 1}/${allItems.length}] ${item.ancmHdlnCntnt?.substring(0, 40)}... ✓ (已有)`
-      );
-      continue;
-    }
-
-    await sleep(2000);
-
-    try {
-      const detail = await requestWithBackoff(
-        () => fetchDetail(item.pkNotice, item.noticeType),
-        `详情${i + 1}`
-      );
-
-      if (detail) {
-        item.ancmCntnt = detail.ancmCntnt || '';
-        item.ancmAttached = detail.ancmAttached || item.ancmAttached;
-        // 补充元数据
-        if (detail.ancmAncDt) item.ancmAncDt = detail.ancmAncDt;
-        if (detail.ancmHdlnCntnt) item.ancmHdlnCntnt = detail.ancmHdlnCntnt;
+    if (!item.ancmCntnt) {
+      await sleep(2000);
+      try {
+        const detail = await requestWithBackoff(
+          () => fetchDetail(item.pkNotice, item.noticeType),
+          `详情${i + 1}`
+        );
+        if (detail) {
+          item.ancmCntnt = detail.ancmCntnt || '';
+          item.ancmAttached = detail.ancmAttached || item.ancmAttached;
+          if (detail.ancmAncDt) item.ancmAncDt = detail.ancmAncDt;
+          if (detail.ancmHdlnCntnt) item.ancmHdlnCntnt = detail.ancmHdlnCntnt;
+        }
+      } catch (e) {
+        item.ancmCntnt = '';
       }
-    } catch (e) {
-      item.ancmCntnt = '';
     }
 
     const st = item.ancmCntnt ? '✓' : '✗';
     console.log(
       `    [${i + 1}/${allItems.length}] ${item.ancmHdlnCntnt?.substring(0, 40)}... ${st}`
     );
+
+    writer.addRow({
+      publishTime: item.ancmAncDt,
+      noticeType: NOTICE_TYPE_MAP[item.noticeType] || item.noticeType,
+      content: stripHtml(item.ancmCntnt || ''),
+    });
   }
 
-  // ---- 保存 ----
-  const output = saveOutput(allItems);
-  console.log(`\n✓ boc_pcm (${output.rows.length}/${output.rows.length})`);
+  console.log(`\n✓ boc_pcm (${writer.count}/${writer.count})`);
 }
 
 main().catch((e) => {
