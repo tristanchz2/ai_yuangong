@@ -207,8 +207,8 @@ const NOTICE_TYPE_MAP = {
 
 function saveOutput(rows) {
   const jsonOutput = {
+    source: '中银智采',
     scrapeTime: new Date().toISOString(),
-    total: rows.length,
     rows: rows.map((r) => ({
       publishTime: r.ancmAncDt,
       noticeType: NOTICE_TYPE_MAP[r.noticeType] || r.noticeType,
@@ -249,29 +249,23 @@ async function main() {
   if (yesterdayIdx >= 0) {
     mode = 'date';
     targetDate = getYesterday();
-    console.log(`📅 模式：爬取昨天的公告 (${targetDate})\n`);
   } else if (dateIdx >= 0) {
     mode = 'date';
     targetDate = args[dateIdx + 1];
     if (!targetDate || !/^\d{4}-\d{2}-\d{2}$/.test(targetDate)) {
-      console.error('⚠ --date 参数格式错误，应为 yyyy-MM-dd');
+      console.error('✗ --date 参数格式错误，应为 yyyy-MM-dd');
       process.exit(1);
     }
-    console.log(`📅 模式：爬取指定日期的公告 (${targetDate})\n`);
   } else if (latestIdx >= 0) {
     mode = 'latest';
     count = parseInt(args[latestIdx + 1]) || 5;
-    console.log(`📋 模式：爬取最新 ${count} 条公告\n`);
-  } else {
-    // 默认：最新5条
-    console.log(`📋 模式：爬取最新 ${count} 条公告（默认）\n`);
   }
 
   let allItems = [];
 
   if (mode === 'latest') {
     // ---- 爬取最新 N 条 ----
-    console.log('[1/2] 获取公告列表...');
+    console.log(`  [列表] 最新 ${count} 条`);
     const result = await requestWithBackoff(
       () => fetchList(1, Math.max(count, 10)),
       '列表'
@@ -282,12 +276,11 @@ async function main() {
       return;
     }
 
-    console.log(`  API 共 ${result.totalRecord} 条，当前页 ${result.data.length} 条`);
     allItems = result.data.slice(0, count);
-    console.log(`  选取前 ${allItems.length} 条\n`);
+    console.log(`    API 共 ${result.totalRecord} 条，选取 ${allItems.length} 条`);
   } else {
     // ---- 按日期爬取 ----
-    console.log(`[1/2] 获取 ${targetDate} 的公告列表...`);
+    console.log(`  [列表] 日期 ${targetDate}`);
     let pageNo = 1;
     let foundAll = false;
 
@@ -304,7 +297,7 @@ async function main() {
       }
 
       if (pageNo === 1) {
-        console.log(`  API 共 ${result.totalRecord} 条`);
+        console.log(`    API 共 ${result.totalRecord} 条`);
       }
 
       for (const item of result.data) {
@@ -319,7 +312,7 @@ async function main() {
       }
 
       console.log(
-        `  第 ${pageNo} 页 ✓ (已匹配 ${allItems.length} 条，本页 ${result.data.length} 条)`
+        `    第 ${pageNo} 页 ✓ (${allItems.length} 条匹配)`
       );
 
       // 如果本页最老的数据已经早于目标日期，停止
@@ -331,7 +324,7 @@ async function main() {
       pageNo++;
     }
 
-    console.log(`  日期筛选完成: ${allItems.length} 条匹配 ${targetDate}\n`);
+    console.log(`    共 ${allItems.length} 条匹配\n`);
   }
 
   if (allItems.length === 0) {
@@ -341,15 +334,14 @@ async function main() {
   }
 
   // ---- 爬取详情 ----
-  console.log(`[2/2] 爬取 ${allItems.length} 条公告详情...\n`);
+  console.log(`  [详情] ${allItems.length} 条`);
 
   for (let i = 0; i < allItems.length; i++) {
     const item = allItems[i];
 
     if (item.ancmCntnt) {
-      // 已有内容，跳过
       console.log(
-        `  [${i + 1}/${allItems.length}] ${item.ancmHdlnCntnt?.substring(0, 40)}... ✓ (已有)`
+        `    [${i + 1}/${allItems.length}] ${item.ancmHdlnCntnt?.substring(0, 40)}... ✓ (已有)`
       );
       continue;
     }
@@ -370,31 +362,18 @@ async function main() {
         if (detail.ancmHdlnCntnt) item.ancmHdlnCntnt = detail.ancmHdlnCntnt;
       }
     } catch (e) {
-      console.log(`  ⚠ 详情获取失败: ${e.message}`);
       item.ancmCntnt = '';
     }
 
-    const st = item.ancmCntnt ? '✓' : '⚠ 无正文';
+    const st = item.ancmCntnt ? '✓' : '✗';
     console.log(
-      `  [${i + 1}/${allItems.length}] ${item.ancmHdlnCntnt?.substring(0, 40)}... ${st}`
+      `    [${i + 1}/${allItems.length}] ${item.ancmHdlnCntnt?.substring(0, 40)}... ${st}`
     );
   }
 
   // ---- 保存 ----
-  console.log('\n[保存] 写入 JSON...');
   const output = saveOutput(allItems);
-  console.log(`  ${OUTPUT_JSON}`);
-  console.log(`  共 ${output.total} 条`);
-  console.log('\n✓ 完成！');
-
-  // 打印摘要
-  console.log('\n--- 数据摘要 ---');
-  allItems.forEach((r, i) => {
-    const type = NOTICE_TYPE_MAP[r.noticeType] || r.noticeType;
-    console.log(
-      `  ${i + 1}. [${type}] ${r.ancmHdlnCntnt || '(无标题)'} (${r.ancmAncDt || '未知时间'})`
-    );
-  });
+  console.log(`\n✓ boc_pcm (${output.rows.length}/${output.rows.length})`);
 }
 
 main().catch((e) => {

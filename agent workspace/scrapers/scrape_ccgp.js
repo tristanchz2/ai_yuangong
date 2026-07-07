@@ -241,19 +241,10 @@ async function main() {
     dateBegin = ago.toISOString().substring(0, 10);
   }
 
-  console.log(`[ccgp] 中国政府采购网 - 金融标书爬虫`);
-  console.log(`[ccgp] 关键词: ${FINANCE_KEYWORDS.join(', ')}`);
-  if (listPages) console.log(`[ccgp] 搜索页数: ${listPages === 'all' ? '全部' : listPages}`);
-  if (dateBegin || dateEnd) console.log(`[ccgp] 日期: ${dateBegin || '不限'} ~ ${dateEnd || '不限'}`);
-  if (limit) console.log(`[ccgp] 限制条数: ${limit}`);
-  console.log('');
-
-  
-
   const maxPages = listPages === 'all' ? 99999 : (listPages ? parseInt(listPages) || 1 : 1);
 
   // ---- Phase 1: 搜索 ----
-  console.log(`[1/3] 搜索公告...\n`);
+  console.log(`  [列表] 关键词: ${FINANCE_KEYWORDS.join(', ')}`);
   let allEntries = [];
   let processedUrls = new Set();
   let startKeywordIdx = 0;
@@ -331,32 +322,32 @@ async function main() {
   allEntries.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   if (limit) allEntries = allEntries.slice(0, limit);
 
-  console.log(`\n  搜索完成: ${allEntries.length} 条\n`);
+  console.log(`    共 ${allEntries.length} 条`);
 
   if (allEntries.length === 0) {
-    console.log('✓ 该日期范围内无数据');
+    console.log('  ✓ 该日期范围内无数据');
     if (fs.existsSync(PROGRESS_FILE)) fs.unlinkSync(PROGRESS_FILE);
     return;
   }
 
   // ---- Phase 2: 详情页（仅抓正文） ----
-  console.log(`[2/3] 抓取详情页...\n`);
+  console.log(`  [详情] ${allEntries.length} 条`);
 
   for (let i = 0; i < allEntries.length; i++) {
     const entry = allEntries[i];
     if (entry.detailScraped) continue;
     if (i > 0) await sleep(DETAIL_DELAY);
 
-    console.log(`  [${i + 1}/${allEntries.length}] ${entry.title.substring(0, 60)}...`);
     try {
       const resp = await fetchUrl(entry.url);
       const detail = parseDetailPage(resp.data);
       entry.content = detail.content.substring(0, 5000);
       entry.detailScraped = true;
+      console.log(`    [${i + 1}/${allEntries.length}] ${entry.title.substring(0, 40)}... ✓`);
     } catch (e) {
-      console.log(`    ⚠ 失败: ${e.message}`);
       entry.detailScraped = true;
       entry.detailError = e.message;
+      console.log(`    [${i + 1}/${allEntries.length}] ${entry.title.substring(0, 40)}... ✗ ${e.message}`);
     }
 
     if ((i + 1) % 5 === 0 || i === allEntries.length - 1) {
@@ -367,22 +358,13 @@ async function main() {
     }
   }
 
-  // ---- Phase 3: 去重 + 保存 ----
-  console.log(`\n[3/3] 去重并保存...\n`);
-
+  // ---- 去重 + 保存 ----
   const deduped = deduplicateByProject(allEntries);
-  console.log(`  去重: ${allEntries.length} → ${deduped.length} 条`);
 
-  const dateTag = dateBegin || 'all';
   const output = {
     source: '中国政府采购网',
-    sourceUrl: 'http://www.ccgp.gov.cn',
     scrapeTime: new Date().toISOString(),
-    dateRange: { start: dateBegin, end: dateEnd },
-    keywords: FINANCE_KEYWORDS,
-    totalBeforeDedup: allEntries.length,
-    total: deduped.length,
-    entries: deduped.map(e => ({
+    rows: deduped.map(e => ({
       title: e.title,
       url: e.url,
       date: e.date,
@@ -396,11 +378,8 @@ async function main() {
   };
 
   fs.writeFileSync(OUTPUT_JSON, JSON.stringify(output, null, 2), 'utf8');
-  console.log(`\n✓ 已保存: ${OUTPUT_JSON}`);
-  console.log(`  ${deduped.length} 个项目`);
-
   if (fs.existsSync(PROGRESS_FILE)) fs.unlinkSync(PROGRESS_FILE);
-  console.log(`\n✓ 完成！`);
+  console.log(`\n✓ ccgp (${deduped.length}/${deduped.length})`);
 }
 
 main().catch(e => { console.error('失败:', e.message); process.exit(1); });

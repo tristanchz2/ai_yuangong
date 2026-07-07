@@ -147,7 +147,8 @@ function saveProgress(p) { fs.writeFileSync(PROGRESS_FILE, JSON.stringify(p, nul
 
 function saveOutput(rows, total) {
   const jsonOutput = {
-    scrapeTime: new Date().toISOString(), total, scraped: rows.length,
+    source: '金采网',
+    scrapeTime: new Date().toISOString(),
     rows: rows.map((r) => ({
       id: r.id, url: BASE_URL + r.id,
       title: r.noticeTitle, publishTime: r.publishTime,
@@ -187,6 +188,8 @@ async function main() {
   const isResume = args.includes('resume');
   const listIdx = args.indexOf('--list');
   const listPages = listIdx >= 0 ? args[listIdx + 1] : null;
+  const limitIdx = args.indexOf('--limit');
+  const limit = limitIdx >= 0 ? parseInt(args[limitIdx + 1]) || 0 : 0;
   const beginIdx = args.indexOf('--begin-date');
   const endIdx = args.indexOf('--end-date');
   if (beginIdx >= 0) dateBegin = args[beginIdx + 1] || '';
@@ -199,29 +202,36 @@ async function main() {
   // ---- 可选：爬列表 ----
   if (listPages) {
     const maxPages = listPages === 'all' ? 99999 : parseInt(listPages) || 5;
-    console.log(`[1/3] 爬取列表 ${maxPages === 99999 ? '全部' : maxPages + ' 页'}...\n`);
+    console.log(`  [列表] ${maxPages === 99999 ? '全部' : maxPages + ' 页'}`);
 
     for (let page = 1; page <= maxPages; page++) {
       await sleep(2000);
       const d = await requestWithBackoff(() => fetchPage(page), `列表${page}`);
       if (!d?.result) { console.error(`API 错误: ${d?.message || 'unknown'}`); process.exit(1); }
       if (!d.rows?.length) { if (page === 1) { console.log('  无数据'); } break; }
-      if (page === 1) { total = d.total; console.log(`  API 共 ${total} 条`); }
+      if (page === 1) { total = d.total; console.log(`    API 共 ${total} 条`); }
 
       // 客户端日期过滤
       const filtered = d.rows.filter(isInDateRange);
       allRows.push(...filtered);
-      console.log(`  第 ${page} 页 ✓ (${filtered.length}/${d.rows.length} 条匹配)`);
+      console.log(`    第 ${page} 页 ✓ (${filtered.length}/${d.rows.length} 条)`);
 
       // 如果数据已经早于起始日期，停止翻页
       const oldestOnPage = d.rows[d.rows.length - 1]?.publishTime?.substring(0, 10) || '';
       if (dateBegin && oldestOnPage < dateBegin) {
-        console.log(`  已超出日期范围，停止翻页`);
+        console.log(`    已超出日期范围，停止翻页`);
         break;
       }
       saveProgress({ rows: allRows, total: allRows.length, nextDetailIdx: 0 });
     }
-    console.log(`  列表完成: ${allRows.length} 条\n`);
+    if (listPages === 'all' || maxPages > 1) {
+      console.log(`    共 ${allRows.length} 条`);
+    }
+
+    // --limit N: 截断到指定条数
+    if (limit > 0 && allRows.length > limit) {
+      allRows = allRows.slice(0, limit);
+    }
   }
 
   // ---- 加载已有数据 ----
@@ -244,7 +254,7 @@ async function main() {
   }
 
   // ---- 抓正文 ----
-  console.log(`[2/3] 爬取 ${allRows.length} 条正文 (从第 ${startDetailIdx + 1} 条)...\n`);
+  console.log(`  [详情] ${allRows.length} 条`);
 
   for (let i = startDetailIdx; i < allRows.length; i++) {
     const row = allRows[i];
@@ -259,8 +269,8 @@ async function main() {
       row.noticeContent = '';
     }
 
-    const st = row.noticeContent ? '✓' : '⚠';
-    console.log(`  [${i + 1}/${allRows.length}] ${row.noticeTitle?.substring(0, 30)}... ${st}`);
+    const st = row.noticeContent ? '✓' : '✗';
+    console.log(`    [${i + 1}/${allRows.length}] ${row.noticeTitle?.substring(0, 40)}... ${st}`);
 
     if ((i + 1) % 5 === 0 || i === allRows.length - 1) {
       saveProgress({ rows: allRows, total, nextDetailIdx: i + 1 });
@@ -268,11 +278,9 @@ async function main() {
     }
   }
 
-  console.log(`\n[3/3] 保存...`);
   saveOutput(allRows, total);
-  console.log(`  JSON: ${OUTPUT_JSON}`);
   if (fs.existsSync(PROGRESS_FILE)) fs.unlinkSync(PROGRESS_FILE);
-  console.log(`\n✓ 完成！${allRows.length} 条`);
+  console.log(`\n✓ cfcpn (${allRows.length}/${allRows.length})`);
 }
 
 main().catch((e) => { console.error('失败:', e.message); process.exit(1); });
