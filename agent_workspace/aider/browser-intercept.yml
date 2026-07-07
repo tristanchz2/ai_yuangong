@@ -1,0 +1,11 @@
+# Aider 自定义工具 — 启动请求拦截
+name: browser_intercept
+description: |
+  启动网络请求拦截器，捕获所有网络请求的详细数据（请求头、响应头、响应体）。
+  **爬虫关键步骤**：在导航到目标页面前调用，可以自动捕获所有 API 调用。
+  拦截后，使用 browser_network 查看捕获的请求。
+parameters:
+  resource_types:
+    type: string
+    description: "要拦截的资源类型列表（JSON 数组），如 '[\"xhr\", \"fetch\", \"document\"]'。留空则拦截所有类型。"
+command: ["venv-browser/bin/python", "tools/browser_mcp_cli.py", "start_request_interception", '{"resource_types": {resource_types}}']

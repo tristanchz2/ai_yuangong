@@ -1,0 +1,21 @@
+# Aider 自定义工具 — Cookie 管理
+name: browser_cookies
+description: |
+  获取或设置浏览器的 Cookie。用于会话保持、登录状态管理等。
+parameters:
+  action:
+    type: string
+    description: "操作类型: get（获取所有 Cookie）, set（设置单个 Cookie）"
+  name:
+    type: string
+    description: "Cookie 名称（action=set 时必填）"
+  value:
+    type: string
+    description: "Cookie 值（action=set 时必填）"
+  domain:
+    type: string
+    description: "Cookie 域名（action=set 时可选）"
+  path:
+    type: string
+    description: "Cookie 路径（action=set 时可选，默认 /）"
+command: ["venv-browser/bin/python", "tools/browser_mcp_cli.py", "manage_cookies", '{"action": "{action}", "name": "{name}", "value": "{value}", "domain": "{domain}", "path": "{path}"}']

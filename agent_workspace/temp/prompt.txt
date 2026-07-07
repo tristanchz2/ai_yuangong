@@ -1,0 +1,1 @@
+打开这个网页 https://cg.psbc.com/cms/default/webfile/1ywgg2/index.html ，等待页面完全加载（至少等待5秒让JS挑战完成），然后描述你看到的页面内容、结构和任何反爬机制。如果页面是空白的，请尝试刷新一次再等待5秒后描述结果。

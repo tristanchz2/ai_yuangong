@@ -1,0 +1,15 @@
+# Aider 自定义工具 — 多标签页管理
+name: browser_pages
+description: |
+  管理浏览器的多个标签页。可以列出、创建、切换、关闭页面。
+parameters:
+  action:
+    type: string
+    description: "操作类型: list（列出所有页面）, new（创建新页面）, select（切换到指定页面）, close（关闭当前页面）"
+  page_index:
+    type: integer
+    description: "页面索引（action=select 时必填，从 0 开始）"
+  url:
+    type: string
+    description: "新页面的初始 URL（action=new 时可选）"
+command: ["venv-browser/bin/python", "tools/browser_mcp_cli.py", "manage_pages", '{"action": "{action}", "page_index": {page_index}, "url": "{url}"}']

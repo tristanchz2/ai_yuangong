@@ -1,0 +1,12 @@
+# Aider 自定义工具 — 点击元素
+name: browser_click
+description: |
+  点击页面上的元素。支持 CSS 选择器。
+parameters:
+  selector:
+    type: string
+    description: CSS 选择器，如 "button.submit", "#login-btn", "a[href='/next']"
+  button:
+    type: string
+    description: "鼠标按钮: left, right, middle（默认 left）"
+command: ["venv-browser/bin/python", "tools/browser_mcp_cli.py", "click", '{"selector": "{selector}", "button": "{button}"}']

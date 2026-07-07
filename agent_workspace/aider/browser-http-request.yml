@@ -1,0 +1,23 @@
+# Aider 自定义工具 — HTTP 请求（类似 curl）
+name: browser_http_request
+description: |
+  直接发送 HTTP 请求（GET/POST/PUT/DELETE），无需打开浏览器。
+  返回完整响应：状态码、响应头、响应体（自动解析 JSON）。
+  **适用场景**：已知 API 端点，无需渲染页面的快速抓取。
+parameters:
+  url:
+    type: string
+    description: 目标 URL
+  method:
+    type: string
+    description: "HTTP 方法: GET, POST, PUT, DELETE, PATCH（默认 GET）"
+  headers:
+    type: string
+    description: "JSON 格式的请求头，如 '{\"Authorization\": \"Bearer token\"}'"
+  body:
+    type: string
+    description: "请求体（POST/PUT 时使用），可以是 JSON 字符串或表单数据"
+  timeout:
+    type: integer
+    description: 超时时间（毫秒，默认 30000）
+command: ["venv-browser/bin/python", "tools/browser_mcp_cli.py", "http_request", '{"url": "{url}", "method": "{method}", "headers": {headers}, "body": "{body}", "timeout": {timeout}}']

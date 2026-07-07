@@ -1,0 +1,19 @@
+# Aider 自定义工具 — 查看网络请求
+name: browser_network
+description: |
+  查看已捕获的网络请求记录。需要先调用 browser_intercept 启动拦截。
+  返回请求 URL、方法、状态码、响应大小等信息。可包含请求头和响应头。
+parameters:
+  resource_types:
+    type: string
+    description: "过滤资源类型（JSON 数组），如 '[\"xhr\", \"fetch\"]'"
+  page_idx:
+    type: integer
+    description: 页码（从 0 开始，默认 0）
+  page_size:
+    type: integer
+    description: 每页数量（默认 50）
+  include_headers:
+    type: boolean
+    description: 是否包含请求/响应头（默认 false）
+command: ["venv-browser/bin/python", "tools/browser_mcp_cli.py", "list_network_requests", '{"resource_types": {resource_types}, "page_idx": {page_idx}, "page_size": {page_size}, "include_headers": {include_headers}}']

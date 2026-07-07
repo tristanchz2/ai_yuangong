@@ -1,0 +1,6 @@
+# Aider 自定义工具 — 获取页面文本
+name: browser_get_text
+description: |
+  获取当前页面的可见文本内容。用于快速了解页面内容。
+parameters: {}
+command: ["venv-browser/bin/python", "tools/browser_mcp_cli.py", "get_page_text", "{}"]

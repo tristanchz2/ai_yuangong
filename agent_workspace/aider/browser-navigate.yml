@@ -1,0 +1,13 @@
+# Aider 自定义工具 — 浏览器导航
+name: browser_navigate
+description: |
+  控制浏览器导航到指定 URL，或执行前进/后退/刷新操作。
+  导航后页面会自动等待 1 秒加载。
+parameters:
+  url:
+    type: string
+    description: 目标 URL（type=url 时必填）
+  type:
+    type: string
+    description: "导航类型: url, back, forward, reload（默认 url）"
+command: ["venv-browser/bin/python", "tools/browser_mcp_cli.py", "navigate_page", '{"url": "{url}", "type": "{type}"}']

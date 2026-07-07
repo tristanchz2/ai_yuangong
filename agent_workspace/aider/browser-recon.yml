@@ -1,0 +1,15 @@
+# .aider.tools/browser-recon.yml
+name: browser_recon
+description: |
+  使用 browser-use 访问指定 URL 并执行侦察。
+  你需要自己编写适合目标网站的 prompt，描述你希望 browser-use 去观察和分析什么。
+  执行前，先将 prompt 写入 prompt_file 指定的文件；执行后，从 output_file 读取结果。
+  注意：prompt 中必须包含目标 URL，browser-use 会根据 prompt 内容自动导航。
+parameters:
+  prompt_file:
+    type: string
+    description: 包含 browser-use 指令的文本文件路径（你需要先将 prompt 写入此文件）
+  output_file:
+    type: string
+    description: 侦察结果的保存路径
+command: ["venv-browser/bin/python", "tools/browser_executor.py", "--prompt-file", "{prompt_file}", "--output-file", "{output_file}"]

@@ -1,0 +1,14 @@
+# Aider 自定义工具 — 执行 JS
+name: browser_eval
+description: |
+  在页面中执行 JavaScript 代码并返回结果。用于获取页面数据、操作 DOM、
+  提取 API 请求信息等高级操作。
+parameters:
+  function:
+    type: string
+    description: |
+      JavaScript 函数体。例如:
+      "() => { return document.title }"
+      "() => { return fetch('/api/list').then(r=>r.json()) }"
+      "() => { return document.querySelectorAll('a').length }"
+command: ["venv-browser/bin/python", "tools/browser_mcp_cli.py", "evaluate_script", '{"function": "{function}"}']

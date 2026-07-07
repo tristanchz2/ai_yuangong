@@ -1,0 +1,15 @@
+# Aider 自定义工具 — 截图
+name: browser_screenshot
+description: |
+  截取当前页面或指定元素的截图，保存为图片文件。
+parameters:
+  file_path:
+    type: string
+    description: 截图保存路径，如 "/tmp/screenshot.png"
+  full_page:
+    type: boolean
+    description: 是否截取完整页面（包括滚动区域），默认 false
+  selector:
+    type: string
+    description: 可选，只截取指定 CSS 选择器的元素
+command: ["venv-browser/bin/python", "tools/browser_mcp_cli.py", "take_screenshot", '{"file_path": "{file_path}", "full_page": {full_page}}']

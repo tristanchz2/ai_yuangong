@@ -2,3 +2,6 @@
 /__pycache__
 node_modules/
 raw_data/
+.env
+venv-browser/
+venv-aider/

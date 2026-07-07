@@ -1,0 +1,16 @@
+# Aider 自定义工具 — 浏览器滚动
+name: browser_scroll
+description: |
+  滚动页面以触发懒加载、无限滚动或查看更多内容。
+  支持向下/向上/向左/向右滚动，或直接滚动到底部。
+parameters:
+  direction:
+    type: string
+    description: "滚动方向: down, up, left, right（默认 down）"
+  amount:
+    type: integer
+    description: 滚动像素数（可选，不指定则使用默认值）
+  to_bottom:
+    type: boolean
+    description: 是否直接滚动到底部（用于触发懒加载，默认 false）
+command: ["venv-browser/bin/python", "tools/browser_mcp_cli.py", "scroll_page", '{"direction": "{direction}", "amount": {amount}, "to_bottom": {to_bottom}}']

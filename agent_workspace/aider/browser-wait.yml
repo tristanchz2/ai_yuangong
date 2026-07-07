@@ -1,0 +1,12 @@
+# Aider 自定义工具 — 等待元素
+name: browser_wait
+description: |
+  等待页面元素出现或等待指定时间。用于等待 AJAX 加载、动画完成等。
+parameters:
+  selector:
+    type: string
+    description: 可选，等待出现的 CSS 选择器。不指定则只等待指定时间
+  timeout:
+    type: number
+    description: 超时时间（毫秒），默认 30000
+command: ["venv-browser/bin/python", "tools/browser_mcp_cli.py", "wait_for", '{"selector": "{selector}", "timeout": {timeout}}']

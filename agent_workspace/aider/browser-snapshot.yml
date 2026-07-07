@@ -1,0 +1,7 @@
+# Aider 自定义工具 — 页面快照
+name: browser_snapshot
+description: |
+  获取当前页面的 DOM 结构快照（无障碍树）。返回页面元素层级结构，
+  比截图更适合理解页面布局。用于分析页面结构、定位元素选择器。
+parameters: {}
+command: ["venv-browser/bin/python", "tools/browser_mcp_cli.py", "take_snapshot", "{}"]
