@@ -5,3 +5,4 @@ raw_data/
 .env
 venv-browser/
 venv-aider/
+.aider*
