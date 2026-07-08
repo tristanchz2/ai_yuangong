@@ -10,7 +10,7 @@ def _load_env():
     env_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
     env_path = os.path.abspath(env_path)
     if not os.path.exists(env_path):
-        print(f"⚠ .env not found at {env_path}")
+        print(f"[WARN] .env not found at {env_path}")
         print(f"  Copy .env.example → .env and fill in your API key.")
         return
     with open(env_path, encoding='utf-8') as f:
@@ -60,7 +60,7 @@ async def execute(prompt: str, output_file: str):
         )
     )
 
-    print(f"🚀 browser-use 启动 (model={model_name})，执行指令：\n{prompt}\n")
+    print(f"[>] browser-use 启动 (model={model_name})，执行指令：\n{prompt}\n")
 
     agent = Agent(
         task=prompt,
@@ -75,7 +75,7 @@ async def execute(prompt: str, output_file: str):
     with open(output_file, "w", encoding="utf-8") as f:
         f.write(output)
 
-    print(f"✅ 执行完成，结果已写入 {output_file}")
+    print(f"[OK] 执行完成，结果已写入 {output_file}")
 
 
 if __name__ == "__main__":

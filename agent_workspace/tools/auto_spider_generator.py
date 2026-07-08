@@ -35,7 +35,7 @@ PROJECT_ROOT = "/Users/tristcz/project/ai_yuangong"
 
 def run_command(cmd, cwd=None, timeout=300):
     """执行命令并返回输出"""
-    print(f"\n🔧 执行命令: {cmd[:100]}...")
+    print(f"\n[>] 执行命令: {cmd[:100]}...")
     try:
         result = subprocess.run(
             cmd,
@@ -54,7 +54,7 @@ def run_command(cmd, cwd=None, timeout=300):
 
 def check_browser_mcp():
     """检查浏览器 MCP 服务器是否运行"""
-    print("\n🔍 检查浏览器 MCP 服务器...")
+    print("\n[>] 检查浏览器 MCP 服务器...")
     import socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(2)
@@ -62,22 +62,22 @@ def check_browser_mcp():
         result = sock.connect_ex(('localhost', 8765))
         sock.close()
         if result == 0:
-            print("✅ 浏览器 MCP 服务器正在运行 (端口 8765)")
+            print("[OK] 浏览器 MCP 服务器正在运行 (端口 8765)")
             return True
         else:
-            print("❌ 浏览器 MCP 服务器未运行")
+            print("[FAIL] 浏览器 MCP 服务器未运行")
             print("   请先启动: python3 agent_workspace/tools/browser_mcp_server.py --sse --port 8765 &")
             return False
     except Exception as e:
         sock.close()
-        print(f"❌ 检查失败: {e}")
+        print(f"[FAIL] 检查失败: {e}")
         return False
 
 
 def reconnaissance(target_url):
     """阶段 1: 侦察页面结构"""
     print("\n" + "="*60)
-    print("📊 阶段 1: 侦察页面结构")
+    print("[>] 阶段 1: 侦察页面结构")
     print("="*60)
     
     recon_prompt = f"""
@@ -104,7 +104,7 @@ def reconnaissance(target_url):
 请使用 browser-use MCP 工具完成上述步骤。
 """
     
-    print("\n🤖 Aider 正在侦察页面...")
+    print("\n[>] Aider 正在侦察页面...")
     success, output = run_command(
         f'source {AIDER_VENV} && aider --no-show-model-warnings --no-auto-commits '
         f'--message "{recon_prompt}"',
@@ -112,11 +112,11 @@ def reconnaissance(target_url):
     )
     
     if success:
-        print("✅ 侦察完成")
+        print("[OK] 侦察完成")
         # 提取关键信息
         return extract_recon_info(output)
     else:
-        print("❌ 侦察失败")
+        print("[FAIL] 侦察失败")
         print(output[:500])
         return None
 
@@ -142,7 +142,7 @@ def extract_recon_info(output):
 def generate_spider_code(target_url, output_file, recon_info):
     """阶段 2: 生成爬虫代码"""
     print("\n" + "="*60)
-    print("💻 阶段 2: 生成爬虫代码")
+    print("[>] 阶段 2: 生成爬虫代码")
     print("="*60)
     
     approach = recon_info.get("recommended_approach", "browser")
@@ -168,7 +168,7 @@ def generate_spider_code(target_url, output_file, recon_info):
 请直接生成完整的、可运行的代码。
 """
     
-    print(f"\n🤖 Aider 正在生成爬虫代码（{approach} 模式）...")
+    print(f"\n[>] Aider 正在生成爬虫代码（{approach} 模式）...")
     success, output = run_command(
         f'source {AIDER_VENV} && aider --no-show-model-warnings --no-auto-commits '
         f'{output_file} --message "{spider_prompt}"',
@@ -176,25 +176,25 @@ def generate_spider_code(target_url, output_file, recon_info):
     )
     
     if success and os.path.exists(output_file):
-        print(f"✅ 爬虫代码已生成: {output_file}")
+        print(f"[OK] 爬虫代码已生成: {output_file}")
         return True
     else:
-        print("❌ 代码生成失败")
+        print("[FAIL] 代码生成失败")
         return False
 
 
 def test_spider(spider_file, target_url):
     """阶段 3: 测试爬虫"""
     print("\n" + "="*60)
-    print("🧪 阶段 3: 测试爬虫")
+    print("[>] 阶段 3: 测试爬虫")
     print("="*60)
     
     # 先安装依赖
-    print("\n📦 安装依赖...")
+    print("\n[>] 安装依赖...")
     run_command("npm install", cwd=PROJECT_ROOT)
     
     # 运行测试（只抓取 2 条）
-    print("\n🚀 运行测试（抓取 2 条数据）...")
+    print("\n[>] 运行测试（抓取 2 条数据）...")
     success, output = run_command(
         f"node {spider_file} --latest 2",
         timeout=120
@@ -208,13 +208,13 @@ def test_spider(spider_file, target_url):
             with open(latest_file, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 if isinstance(data, list) and len(data) > 0:
-                    print(f"✅ 测试成功！抓取到 {len(data)} 条数据")
+                    print(f"[OK] 测试成功！抓取到 {len(data)} 条数据")
                     print(f"   第一条数据: {json.dumps(data[0], ensure_ascii=False)[:200]}")
                     return True, data
         except Exception as e:
-            print(f"⚠️  输出文件格式有问题: {e}")
+            print(f"[WARN] 输出文件格式有问题: {e}")
     
-    print("❌ 测试失败")
+    print("[FAIL] 测试失败")
     print(f"输出:\n{output[:1000]}")
     return False, None
 
@@ -222,7 +222,7 @@ def test_spider(spider_file, target_url):
 def fix_spider_code(spider_file, target_url, error_info, round_num):
     """阶段 4: 自动修正代码"""
     print("\n" + "="*60)
-    print(f"🔧 阶段 4: 自动修正代码 (第 {round_num} 轮)")
+    print(f"[>] 阶段 4: 自动修正代码 (第 {round_num} 轮)")
     print("="*60)
     
     fix_prompt = f"""
@@ -243,7 +243,7 @@ def fix_spider_code(spider_file, target_url, error_info, round_num):
 修复后我会重新测试。
 """
     
-    print(f"\n🤖 Aider 正在修复代码...")
+    print(f"\n[>] Aider 正在修复代码...")
     success, output = run_command(
         f'source {AIDER_VENV} && aider --no-show-model-warnings --no-auto-commits '
         f'{spider_file} --message "{fix_prompt}"',
@@ -267,7 +267,7 @@ def main():
     output_file = sys.argv[2] if len(sys.argv) > 2 else f"scrapers/scrape_{hostname.replace('.', '_')}.js"
     
     print("\n" + "="*60)
-    print("🕷️  智能爬虫生成器")
+    print("[>] 智能爬虫生成器")
     print("="*60)
     print(f"目标 URL: {target_url}")
     print(f"输出文件: {output_file}")
@@ -275,36 +275,36 @@ def main():
     
     # Step 0: 检查环境
     if not check_browser_mcp():
-        print("\n❌ 请先启动浏览器 MCP 服务器")
+        print("\n[FAIL] 请先启动浏览器 MCP 服务器")
         sys.exit(1)
     
     # Step 1: 侦察
     recon_info = reconnaissance(target_url)
     if not recon_info:
-        print("\n❌ 侦察失败，无法继续")
+        print("\n[FAIL] 侦察失败，无法继续")
         sys.exit(1)
     
-    print(f"\n📋 侦察结果:")
+    print(f"\n[>] 侦察结果:")
     print(f"  - 有反爬机制: {recon_info['has_anti_bot']}")
     print(f"  - 推荐方式: {recon_info['recommended_approach']}")
     print(f"  - API 端点: {len(recon_info['api_endpoints'])} 个")
     
     # Step 2: 生成代码
     if not generate_spider_code(target_url, output_file, recon_info):
-        print("\n❌ 代码生成失败")
+        print("\n[FAIL] 代码生成失败")
         sys.exit(1)
     
     # Step 3 & 4: 测试 + 自动修正循环
     for round_num in range(1, MAX_RETRY_ROUNDS + 1):
         print(f"\n{'='*60}")
-        print(f"🔄 测试轮次 {round_num}/{MAX_RETRY_ROUNDS}")
+        print(f"[>] 测试轮次 {round_num}/{MAX_RETRY_ROUNDS}")
         print('='*60)
         
         success, data = test_spider(output_file, target_url)
         
         if success:
             print("\n" + "="*60)
-            print("🎉 爬虫生成成功！")
+            print("[OK] 爬虫生成成功！")
             print("="*60)
             print(f"文件位置: {output_file}")
             print(f"数据样例: {json.dumps(data[0] if data else {}, ensure_ascii=False)[:300]}")
@@ -313,11 +313,11 @@ def main():
             sys.exit(0)
         else:
             if round_num < MAX_RETRY_ROUNDS:
-                print(f"\n⚠️  测试失败，进入第 {round_num} 轮自动修正...")
+                print(f"\n[WARN] 测试失败，进入第 {round_num} 轮自动修正...")
                 fix_spider_code(output_file, target_url, "测试失败，没有抓到数据", round_num)
             else:
-                print(f"\n❌ 经过 {MAX_RETRY_ROUNDS} 轮自动修正仍然失败")
-                print("\n📞 需要人工介入")
+                print(f"\n[FAIL] 经过 {MAX_RETRY_ROUNDS} 轮自动修正仍然失败")
+                print("\n[>] 需要人工介入")
                 print("\n建议操作：")
                 print(f"1. 手动检查爬虫代码: {output_file}")
                 print(f"2. 手动测试: node {output_file} --latest 5")

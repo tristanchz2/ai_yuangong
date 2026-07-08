@@ -954,7 +954,7 @@ def main():
         )
 
         import uvicorn
-        print(f"🌐 Browser MCP Server (SSE) running at http://{args.host}:{args.port}/sse", file=sys.stderr)
+        print(f"[>] Browser MCP Server (SSE) running at http://{args.host}:{args.port}/sse", file=sys.stderr)
         uvicorn.run(app, host=args.host, port=args.port)
     elif args.streamable:
         from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
@@ -981,7 +981,7 @@ def main():
         app = Starlette(routes=[Route("/mcp", endpoint=handle_streamable, methods=["GET", "POST"])])
 
         import uvicorn
-        print(f"🌐 Browser MCP Server (Streamable HTTP) running at http://{args.host}:{args.port}/mcp", file=sys.stderr)
+        print(f"[>] Browser MCP Server (Streamable HTTP) running at http://{args.host}:{args.port}/mcp", file=sys.stderr)
         uvicorn.run(app, host=args.host, port=args.port)
     else:
         # stdio 模式 — 不输出任何内容到 stdout

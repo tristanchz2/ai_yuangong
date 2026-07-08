@@ -28,7 +28,7 @@ def run_browser_tool(tool_name, args_dict):
         json.dumps(args_dict)
     ]
     
-    print(f"🔧 执行: {tool_name}({json.dumps(args_dict)})")
+    print(f"[>] 执行: {tool_name}({json.dumps(args_dict)})")
     try:
         result = subprocess.run(
             cmd,
@@ -47,24 +47,24 @@ def run_browser_tool(tool_name, args_dict):
         output = '\n'.join(output_lines).strip()
         
         if result.returncode == 0:
-            print(f"✅ {tool_name} 成功")
+            print(f"[OK] {tool_name} 成功")
             return True, output
         else:
-            print(f"❌ {tool_name} 失败: {result.stderr[:200]}")
+            print(f"[FAIL] {tool_name} 失败: {result.stderr[:200]}")
             return False, output
     except Exception as e:
-        print(f"❌ {tool_name} 异常: {e}")
+        print(f"[FAIL] {tool_name} 异常: {e}")
         return False, str(e)
 
 
 def reconnaissance(target_url):
     """阶段 1: 侦察页面"""
     print("\n" + "="*60)
-    print("📊 阶段 1: 侦察页面结构")
+    print("[>] 阶段 1: 侦察页面结构")
     print("="*60)
     
     # Step 1: 启动请求拦截
-    print("\n1️⃣  启动请求拦截...")
+    print("\n[1] 启动请求拦截...")
     success, output = run_browser_tool("start_request_interception", {
         "resource_types": ["xhr", "fetch"]
     })
@@ -74,71 +74,71 @@ def reconnaissance(target_url):
     time.sleep(1)
     
     # Step 2: 导航到目标页面
-    print(f"\n2️⃣  导航到: {target_url}")
+    print(f"\n[2] 导航到: {target_url}")
     success, output = run_browser_tool("navigate_page", {
         "url": target_url,
         "type": "url",
         "timeout": 30000
     })
     if not success:
-        print(f"   ❌ 导航失败: {output}")
+        print(f"   [FAIL] 导航失败: {output}")
         return None
     
-    print(f"   ✅ 当前 URL: {output}")
+    print(f"   [OK] 当前 URL: {output}")
     time.sleep(2)
     
     # Step 3: 获取页面快照
-    print("\n3️⃣  获取页面 DOM 快照...")
+    print("\n[3] 获取页面 DOM 快照...")
     success, snapshot = run_browser_tool("take_snapshot", {})
     if success:
-        print(f"   ✅ 快照长度: {len(snapshot)} 字符")
+        print(f"   [OK] 快照长度: {len(snapshot)} 字符")
     else:
-        print(f"   ⚠️  快照失败: {snapshot[:200]}")
+        print(f"   [WARN] 快照失败: {snapshot[:200]}")
         snapshot = ""
     
     # Step 4: 获取页面文本
-    print("\n4️⃣  获取页面文本内容...")
+    print("\n[4] 获取页面文本内容...")
     success, page_text = run_browser_tool("get_page_text", {})
     if success:
-        print(f"   ✅ 文本长度: {len(page_text)} 字符")
+        print(f"   [OK] 文本长度: {len(page_text)} 字符")
         print(f"   前 500 字符: {page_text[:500]}")
     else:
-        print(f"   ⚠️  文本获取失败")
+        print(f"   [WARN] 文本获取失败")
         page_text = ""
     
     # Step 5: 滚动触发懒加载
-    print("\n5️⃣  滚动页面触发懒加载...")
+    print("\n[5] 滚动页面触发懒加载...")
     success, _ = run_browser_tool("scroll_page", {
         "to_bottom": True
     })
     if success:
-        print("   ✅ 滚动完成")
+        print("   [OK] 滚动完成")
     time.sleep(2)
     
     # Step 6: 查看网络请求
-    print("\n6️⃣  查看捕获的网络请求...")
+    print("\n[6] 查看捕获的网络请求...")
     success, network_info = run_browser_tool("list_network_requests", {
         "resource_types": ["xhr", "fetch"],
         "include_headers": False,
         "page_size": 20
     })
     if success:
-        print(f"   ✅ 网络请求信息:\n{network_info[:1000]}")
+        print(f"   [OK] 网络请求信息:\n{network_info[:1000]}")
     else:
-        print(f"   ⚠️  网络请求获取失败")
+        print(f"   [WARN] 网络请求获取失败")
         network_info = ""
     
     # Step 7: 截图
-    print("\n7️⃣  截图保存...")
+    print("\n[7] 截图保存...")
     screenshot_path = f"/tmp/recon_{int(time.time())}.png"
     success, screenshot_result = run_browser_tool("take_screenshot", {
         "full_page": True,
         "path": screenshot_path
     })
     if success:
-        print(f"   ✅ 截图已保存: {screenshot_result}")
+        print(f"   [OK] 截图已保存: {screenshot_result}")
     else:
-        print(f"   ⚠️  截图失败: {screenshot_result}")
+        print(f"   [WARN] 截图失败: {screenshot_result}")
     
     # 汇总侦察结果
     recon_data = {
@@ -151,10 +151,10 @@ def reconnaissance(target_url):
     }
     
     print("\n" + "="*60)
-    print("📋 侦察结果汇总")
+    print("[>] 侦察结果汇总")
     print("="*60)
     print(f"  - 目标 URL: {target_url}")
-    print(f"  - 有反爬机制: {'是 ⚠️' if recon_data['has_anti_bot'] else '否 ✅'}")
+    print(f"  - 有反爬机制: {'是 [WARN]' if recon_data['has_anti_bot'] else '否 [OK]'}")
     print(f"  - 页面文本长度: {len(page_text)} 字符")
     print(f"  - 网络请求数: {network_info.count('http') if network_info else 0}")
     
@@ -164,7 +164,7 @@ def reconnaissance(target_url):
 def generate_spider_code(recon_data, output_file):
     """阶段 2: 生成爬虫代码"""
     print("\n" + "="*60)
-    print("💻 阶段 2: 生成爬虫代码")
+    print("[>] 阶段 2: 生成爬虫代码")
     print("="*60)
     
     # 构建 Prompt
@@ -190,7 +190,7 @@ def generate_spider_code(recon_data, output_file):
 请直接输出完整的、可运行的 JavaScript 代码，不要有其他解释。
 """
     
-    print("\n🤖 正在生成爬虫代码...")
+    print("\n[>] 正在生成爬虫代码...")
     
     # 这里可以调用任何 LLM API
     # 为了演示，我们使用简单的模板
@@ -201,7 +201,7 @@ def generate_spider_code(recon_data, output_file):
     with open(output_file, 'w', encoding='utf-8') as f:
         f.write(code)
     
-    print(f"✅ 爬虫代码已生成: {output_file}")
+    print(f"[OK] 爬虫代码已生成: {output_file}")
     print(f"   文件大小: {os.path.getsize(output_file)} 字节")
     
     return True
@@ -235,7 +235,7 @@ const CONFIG = {{
 
 // ==================== 主函数 ====================
 async function main() {{
-    console.log('🚀 启动爬虫...');
+    console.log('[>] 启动爬虫...');
     console.log('目标:', CONFIG.targetUrl);
     
     // 解析命令行参数
@@ -249,7 +249,7 @@ async function main() {{
     }}
     
     if (latestCount) {{
-        console.log(`📊 只抓取最近 ${{latestCount}} 条`);
+        console.log(`[>] 只抓取最近 ${{latestCount}} 条`);
     }}
     
     // 启动浏览器
@@ -277,7 +277,7 @@ async function main() {{
     
     try {{
         // 导航到目标页面
-        console.log('📄 导航到目标页面...');
+        console.log('[>] 导航到目标页面...');
         await page.goto(CONFIG.targetUrl, {{ 
             waitUntil: 'domcontentloaded',
             timeout: 30000 
@@ -287,7 +287,7 @@ async function main() {{
         await page.waitForTimeout(2000);
         
         // TODO: 根据实际页面结构调整选择器
-        console.log('🔍 提取数据...');
+        console.log('[>] 提取数据...');
         
         const items = await page.evaluate(() => {{
             const results = [];
@@ -313,7 +313,7 @@ async function main() {{
             return results;
         }});
         
-        console.log(`✅ 提取到 ${{items.length}} 条数据`);
+        console.log(`[OK] 提取到 ${{items.length}} 条数据`);
         
         // 限制数量
         const limitedItems = latestCount ? items.slice(0, latestCount) : items;
@@ -323,8 +323,8 @@ async function main() {{
         fs.mkdirSync(CONFIG.outputDir, {{ recursive: true }});
         fs.writeFileSync(outputPath, JSON.stringify(limitedItems, null, 2), 'utf-8');
         
-        console.log(`💾 数据已保存: ${{outputPath}}`);
-        console.log(`📊 共 ${{limitedItems.length}} 条记录`);
+        console.log(`[>] 数据已保存: ${{outputPath}}`);
+        console.log(`[>] 共 ${{limitedItems.length}} 条记录`);
         
         if (limitedItems.length > 0) {{
             console.log('\\n第一条数据示例:');
@@ -332,11 +332,11 @@ async function main() {{
         }}
         
     }} catch (error) {{
-        console.error('❌ 爬虫出错:', error.message);
+        console.error('[FAIL] 爬虫出错:', error.message);
         throw error;
     }} finally {{
         await browser.close();
-        console.log('👋 浏览器已关闭');
+        console.log('[>] 浏览器已关闭');
     }}
 }}
 
@@ -353,7 +353,7 @@ main().catch(err => {{
 def fix_spider_code_with_aider(spider_file, error_output, round_num):
     """使用 Aider 自动修复爬虫代码"""
     print(f"\n{'='*60}")
-    print(f"🔧 第 {round_num} 轮自动修正（使用 Aider）")
+    print(f"[>] 第 {round_num} 轮自动修正（使用 Aider）")
     print('='*60)
     
     fix_prompt = f"""
@@ -373,7 +373,7 @@ def fix_spider_code_with_aider(spider_file, error_output, round_num):
 修复后我会重新测试。
 """
     
-    print(f"\n🤖 Aider 正在分析并修复代码...")
+    print(f"\n[>] Aider 正在分析并修复代码...")
     
     try:
         # 使用 venv-aider 中的 Python
@@ -395,37 +395,37 @@ def fix_spider_code_with_aider(spider_file, error_output, round_num):
         )
         
         if result.returncode == 0:
-            print("✅ Aider 修复完成")
+            print("[OK] Aider 修复完成")
             return True
         else:
-            print(f"⚠️  Aider 执行异常: {result.stderr[:500]}")
+            print(f"[WARN] Aider 执行异常: {result.stderr[:500]}")
             return False
             
     except Exception as e:
-        print(f"❌ Aider 调用失败: {e}")
+        print(f"[FAIL] Aider 调用失败: {e}")
         return False
 
 
 def test_and_fix_spider(spider_file, max_retries=MAX_RETRY_ROUNDS):
     """测试爬虫，失败时自动用 Aider 修复"""
     print("\n" + "="*60)
-    print("🧪 阶段 3: 测试爬虫 + 自动修正")
+    print("[>] 阶段 3: 测试爬虫 + 自动修正")
     print("="*60)
     
     # 检查文件是否存在
     if not os.path.exists(spider_file):
-        print(f"❌ 爬虫文件不存在: {spider_file}")
+        print(f"[FAIL] 爬虫文件不存在: {spider_file}")
         return False
     
     for round_num in range(1, max_retries + 1):
         print(f"\n{'='*60}")
-        print(f"🔄 测试轮次 {round_num}/{max_retries}")
+        print(f"[>] 测试轮次 {round_num}/{max_retries}")
         print('='*60)
         
-        print(f"\n📦 安装依赖...")
+        print(f"\n[>] 安装依赖...")
         subprocess.run(["npm", "install"], cwd=PROJECT_ROOT, capture_output=True)
         
-        print(f"\n🚀 运行测试（抓取 2 条）...")
+        print(f"\n[>] 运行测试（抓取 2 条）...")
         try:
             result = subprocess.run(
                 ["node", spider_file, "--latest", "2"],
@@ -440,38 +440,38 @@ def test_and_fix_spider(spider_file, max_retries=MAX_RETRY_ROUNDS):
             
             # 检查是否成功抓取到数据
             if result.returncode == 0 and "提取到 0 条数据" not in output:
-                print("\n✅ 测试成功！")
+                print("\n[OK] 测试成功！")
                 return True
             elif "提取到 0 条数据" in output:
-                print("\n⚠️  测试通过但未抓取到数据（选择器可能不匹配）")
+                print("\n[WARN] 测试通过但未抓取到数据（选择器可能不匹配）")
                 if round_num < max_retries:
-                    print(f"\n🔧 进入第 {round_num} 轮自动修正...")
+                    print(f"\n[>] 进入第 {round_num} 轮自动修正...")
                     if not fix_spider_code_with_aider(spider_file, output, round_num):
-                        print("⚠️  Aider 修复失败，继续下一轮")
+                        print("[WARN] Aider 修复失败，继续下一轮")
                 continue
             else:
-                print(f"\n❌ 测试失败 (exit code: {result.returncode})")
+                print(f"\n[FAIL] 测试失败 (exit code: {result.returncode})")
                 if round_num < max_retries:
-                    print(f"\n🔧 进入第 {round_num} 轮自动修正...")
+                    print(f"\n[>] 进入第 {round_num} 轮自动修正...")
                     if not fix_spider_code_with_aider(spider_file, output, round_num):
-                        print("⚠️  Aider 修复失败，继续下一轮")
+                        print("[WARN] Aider 修复失败，继续下一轮")
                 continue
                 
         except subprocess.TimeoutExpired:
-            print("\n❌ 测试超时")
+            print("\n[FAIL] 测试超时")
             if round_num < max_retries:
-                print(f"\n🔧 进入第 {round_num} 轮自动修正...")
+                print(f"\n[>] 进入第 {round_num} 轮自动修正...")
                 fix_spider_code_with_aider(spider_file, "测试超时", round_num)
         except Exception as e:
-            print(f"\n❌ 测试异常: {e}")
+            print(f"\n[FAIL] 测试异常: {e}")
             if round_num < max_retries:
-                print(f"\n🔧 进入第 {round_num} 轮自动修正...")
+                print(f"\n[>] 进入第 {round_num} 轮自动修正...")
                 fix_spider_code_with_aider(spider_file, str(e), round_num)
     
     print(f"\n{'='*60}")
-    print(f"❌ 经过 {max_retries} 轮自动修正仍然失败")
+    print(f"[FAIL] 经过 {max_retries} 轮自动修正仍然失败")
     print('='*60)
-    print("\n📞 需要人工介入")
+    print("\n[>] 需要人工介入")
     print(f"文件位置: {spider_file}")
     print("\n建议操作：")
     print(f"1. 手动检查爬虫代码: {spider_file}")
@@ -496,7 +496,7 @@ def main():
     output_file = sys.argv[2] if len(sys.argv) > 2 else f"scrapers/scrape_{hostname.replace('.', '_')}.js"
     
     print("\n" + "="*60)
-    print("🕷️  纯 Python 智能爬虫生成器")
+    print("[>] 纯 Python 智能爬虫生成器")
     print("="*60)
     print(f"目标 URL: {target_url}")
     print(f"输出文件: {output_file}")
@@ -504,24 +504,24 @@ def main():
     # Step 1: 侦察
     recon_data = reconnaissance(target_url)
     if not recon_data:
-        print("\n❌ 侦察失败")
+        print("\n[FAIL] 侦察失败")
         sys.exit(1)
     
     # Step 2: 生成代码
     if not generate_spider_code(recon_data, output_file):
-        print("\n❌ 代码生成失败")
+        print("\n[FAIL] 代码生成失败")
         sys.exit(1)
     
     # Step 3: 测试 + 自动修正
     if test_and_fix_spider(output_file):
         print("\n" + "="*60)
-        print("🎉 爬虫生成成功！")
+        print("[OK] 爬虫生成成功！")
         print("="*60)
         print(f"文件位置: {output_file}")
         print(f"\n完整测试命令:")
         print(f"  node {output_file} --latest 10")
     else:
-        print("\n⚠️  自动修正已达到最大轮数")
+        print("\n[WARN] 自动修正已达到最大轮数")
         print(f"文件位置: {output_file}")
 
 
