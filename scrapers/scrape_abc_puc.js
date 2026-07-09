@@ -151,6 +151,17 @@ function getYesterday() {
 async function main() {
   const args = process.argv.slice(2);
 
+  // ---- --info: 输出元数据 JSON ----
+  if (args.includes('--info')) {
+    console.log(JSON.stringify({
+      name: 'abc_puc',
+      description: '农银e采 (ABC PUC) 招标公告爬虫',
+      modes: ['latest', 'yesterday', 'date'],
+      outputFile: 'raw_data/abc_puc_data.json',
+    }));
+    return;
+  }
+
   let mode = 'latest';
   let count = 5;
   let targetDate = null;

@@ -223,6 +223,17 @@ function getYesterday() {
 async function main() {
   const args = process.argv.slice(2);
 
+  // ---- --info: 输出元数据 JSON ----
+  if (args.includes('--info')) {
+    console.log(JSON.stringify({
+      name: 'boc_pcm',
+      description: '中国银行中银智采 (BOC PCM) 采购公告爬虫',
+      modes: ['latest', 'yesterday', 'date'],
+      outputFile: 'raw_data/boc_pcm_data.json',
+    }));
+    return;
+  }
+
   let mode = 'latest';
   let count = 5;
   let targetDate = null;

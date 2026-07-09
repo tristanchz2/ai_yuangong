@@ -1,4 +1,41 @@
-.qoder
-/__pycache__
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# 虚拟环境
+venv-aider/
+venv-browser/
+
+# 依赖
 node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 项目特定
+.env
+logs/
 raw_data/
+processed_data/
+*.log
+
+# 临时文件
+tmp/
+temp/
+*.tmp
+.qoder

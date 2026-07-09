@@ -154,6 +154,17 @@ function getYesterday() {
 async function main() {
   const args = process.argv.slice(2);
 
+  // ---- --info: 输出元数据 JSON ----
+  if (args.includes('--info')) {
+    console.log(JSON.stringify({
+      name: 'cdb',
+      description: '国家开发银行采购网 (CDB) 结果公告爬虫',
+      modes: ['latest', 'yesterday', 'date'],
+      outputFile: 'raw_data/cdb_data.json',
+    }));
+    return;
+  }
+
   let mode = 'latest';
   let count = 5;
   let targetDate = null;

@@ -4,9 +4,7 @@
   "description": "```数据来源```   金采网：http://www.cfcpn.com/   中银智采：https://ctpch.fmscop.bankofchina.com/   农银e采平台：https://jc.abchina.com.cn/   国家开发银行采购网：http://cg.cdb.com.cn/   中国人民银行集中采购中心：https://jzcg.pbc.gov.cn/   工银集采：https://jc.icbc.com.cn/   龙集采：https://ibuy.ccb.com/   邮银易采：https://cg.psbc.com/   中信金控采购共享平台：https://ebid.cfhc.citic/   浦发银行采购供应商门户：https://ebuy.spdb.com.cn/   广发银行供应商服务平台：https://gfcg.cgbchina.com.cn/",
   "main": "index.js",
   "scripts": {
-    "test": "python3 run.py all --latest 5",
-    "scrape": "python3 run.py all --yesterday",
-    "latest": "python3 run.py all --latest 5"
+    "start": "python server.py"
   },
   "repository": {
     "type": "git",

@@ -205,6 +205,32 @@ function deduplicateByProject(entries) {
 async function main() {
   // 解析参数 (与 scrape_cfcpn.js 风格一致)
   const args = process.argv.slice(2);
+
+  // ---- --info: 输出元数据 JSON ----
+  if (args.includes('--info')) {
+    console.log(JSON.stringify({
+      name: 'ccgp',
+      description: '中国政府采购网 (ccgp.gov.cn) 金融相关标书爬虫',
+      modes: ['latest', 'yesterday'],
+      outputFile: 'raw_data/ccgp_data.json',
+    }));
+    return;
+  }
+
+  // ---- 标准接口参数转换 ----
+  const latestIdx = args.indexOf('--latest');
+  const isYesterday = args.includes('--yesterday');
+
+  if (latestIdx >= 0) {
+    // --latest N → 转换为 --list 1 --limit N
+    const n = parseInt(args[latestIdx + 1]) || 5;
+    if (!args.includes('--list')) { args.push('--list', '1'); }
+    if (!args.includes('--limit')) { args.push('--limit', String(n)); }
+  } else if (!args.includes('resume') && !args.includes('--list') && !isYesterday && !args.includes('--begin-date')) {
+    // 默认行为: --latest 5
+    args.push('--list', '1', '--limit', '5');
+  }
+
   const isResume = args.includes('resume');
 
   const listIdx = args.indexOf('--list');
@@ -213,12 +239,12 @@ async function main() {
   const beginIdx = args.indexOf('--begin-date');
   const endIdx = args.indexOf('--end-date');
   const limitIdx = args.indexOf('--limit');
-  const isYesterday = args.includes('--yesterday');
+  const isYesterdayArg = args.includes('--yesterday');
 
   let dateBegin = '', dateEnd = '';
   let limit = null;
 
-  if (isYesterday) {
+  if (isYesterdayArg) {
     const d = new Date();
     d.setDate(d.getDate() - 1);
     dateBegin = d.toISOString().substring(0, 10);
@@ -228,14 +254,8 @@ async function main() {
   if (endIdx >= 0) dateEnd = args[endIdx + 1] || '';
   if (limitIdx >= 0) limit = parseInt(args[limitIdx + 1]) || null;
 
-  // 默认: 如果没指定任何模式，用昨天；如果只指定了 --list 没指定日期，用近30天
-  if (!listPages && !dateBegin && !dateEnd && !isYesterday && !isResume) {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    dateBegin = d.toISOString().substring(0, 10);
-    dateEnd = dateBegin;
-  } else if (listPages && !dateBegin && !dateEnd && !isYesterday) {
-    // --list 模式不指定日期时，默认近30天
+  // --list 模式不指定日期时，默认近30天
+  if (listPages && !dateBegin && !dateEnd && !isYesterdayArg) {
     const now = new Date();
     const ago = new Date(now.getTime() - 30 * 86400000);
     dateEnd = now.toISOString().substring(0, 10);

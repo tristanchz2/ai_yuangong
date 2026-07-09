@@ -127,6 +127,13 @@ function fetchDetail(id) {
 
 // ===================== 辅助函数 =====================
 
+function getYesterday() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function rowToOutput(r) {
   return {
     id: r.id, url: BASE_URL + r.id,
@@ -151,6 +158,38 @@ function loadExistingData() {
 
 async function main() {
   const args = process.argv.slice(2);
+
+  // ---- --info: 输出元数据 JSON ----
+  if (args.includes('--info')) {
+    console.log(JSON.stringify({
+      name: 'cfcpn',
+      description: '金采网 (CFCPN) 采购公告爬虫',
+      modes: ['latest', 'yesterday'],
+      outputFile: 'raw_data/cfcpn_data.json',
+    }));
+    return;
+  }
+
+  // ---- 标准接口参数转换 ----
+  const latestIdx = args.indexOf('--latest');
+  const isYesterday = args.includes('--yesterday');
+
+  if (isYesterday) {
+    // --yesterday → 转换为 --list 1 --begin-date X --end-date X
+    const yd = getYesterday();
+    if (!args.includes('--begin-date')) { args.push('--begin-date', yd); }
+    if (!args.includes('--end-date')) { args.push('--end-date', yd); }
+    if (!args.includes('--list')) { args.push('--list', '1'); }
+  } else if (latestIdx >= 0) {
+    // --latest N → 转换为 --list 1 --limit N
+    const n = parseInt(args[latestIdx + 1]) || 5;
+    if (!args.includes('--list')) { args.push('--list', '1'); }
+    if (!args.includes('--limit')) { args.push('--limit', String(n)); }
+  } else if (!args.includes('resume') && !args.includes('--list')) {
+    // 默认行为: --latest 5
+    args.push('--list', '1', '--limit', '5');
+  }
+
   const isResume = args.includes('resume');
   const listIdx = args.indexOf('--list');
   const listPages = listIdx >= 0 ? args[listIdx + 1] : null;

@@ -210,6 +210,17 @@ function extractDate(raw) {
 async function main() {
   const args = process.argv.slice(2);
 
+  // ---- --info: 输出元数据 JSON ----
+  if (args.includes('--info')) {
+    console.log(JSON.stringify({
+      name: 'icbc',
+      description: '工商银行工银集采 (ICBC) 招标公告爬虫',
+      modes: ['latest', 'yesterday', 'date'],
+      outputFile: 'raw_data/icbc_data.json',
+    }));
+    return;
+  }
+
   let mode = 'latest';
   let count = 5;
   let targetDate = null;
