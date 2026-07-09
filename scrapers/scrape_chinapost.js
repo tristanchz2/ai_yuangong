@@ -15,7 +15,7 @@ const path = require('path');
 const { stripHtml } = require('./utility/stripHtml');
 const { JsonWriter } = require('./utility/JsonWriter');
 
-const OUTPUT_JSON = path.join(__dirname, '..', '..', 'raw_data', 'chinapost_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', 'raw_data', 'chinapost_data.json');
 
 // ===================== HTTP 请求 =====================
 function request(url, options = {}) {

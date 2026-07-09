@@ -14,7 +14,7 @@ const path = require('path');
 const { stripHtml } = require('./utility/stripHtml');
 const { JsonWriter } = require('./utility/JsonWriter');
 
-const OUTPUT_JSON = path.join(__dirname, '..', '..', 'raw_data', 'cbhb_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', 'raw_data', 'cbhb_data.json');
 const BASE_URL = 'https://app.bhypt.cbhb.com.cn';
 
 // ===================== HTTP 请求 =====================

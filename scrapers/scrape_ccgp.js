@@ -20,7 +20,7 @@ const { JsonWriter } = require('./utility/JsonWriter');
 
 // ===================== 配置 =====================
 
-const OUTPUT_JSON = path.join(__dirname, '..', '..', 'raw_data', 'ccgp_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', 'raw_data', 'ccgp_data.json');
 
 // 搜索关键词
 const FINANCE_KEYWORDS = ['银行', '保险', '证券'];

@@ -16,7 +16,7 @@ const path = require('path');
 const { stripHtml } = require('./utility/stripHtml');
 const { JsonWriter } = require('./utility/JsonWriter');
 
-const OUTPUT_JSON = path.join(__dirname, '..', '..', 'raw_data', 'icbc_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', 'raw_data', 'icbc_data.json');
 const HOSTNAME = 'jc.icbc.com.cn';
 const API_PATH = '/app/queryPortalNoticeInfoPage';
 

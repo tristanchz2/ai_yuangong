@@ -16,7 +16,7 @@ const { JsonWriter } = require('./utility/JsonWriter');
 
 const PAGE_SIZE = 10;
 const BASE_URL = 'http://www.cfcpn.com/jcw/sys/index/goUrl?url=modules/sys/login/detail&column=undefined&searchVal=';
-const OUTPUT_JSON = path.join(__dirname, '..', '..', 'raw_data', 'cfcpn_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', 'raw_data', 'cfcpn_data.json');
 
 // ===================== 请求层 =====================
 

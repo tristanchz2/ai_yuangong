@@ -13,7 +13,7 @@ const path = require('path');
 const { stripHtml } = require('./utility/stripHtml');
 const { JsonWriter } = require('./utility/JsonWriter');
 
-const OUTPUT_JSON = path.join(__dirname, '..', '..', 'raw_data', 'cdb_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', 'raw_data', 'cdb_data.json');
 const SITE_BASE = 'https://cg.cdb.com.cn';
 const LIST_BASE = `${SITE_BASE}/cmsjieguo`;
 
