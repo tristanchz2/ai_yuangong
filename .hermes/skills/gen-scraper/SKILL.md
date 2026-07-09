@@ -472,7 +472,7 @@ for cls in ['article-content', 'news_content', 'TRS_Editor', 'content']:
 
 ## 禁止行为
 
-- 不要修改 `run.py`
+- **不要动任何项目文件，只能生成一个你自己写的爬虫文件**
 - 不要问用户任何问题
 - 不要使用外部 npm 包（只用 Node.js 内置模块 + 项目工具函数）
 - 不要生成不完整的代码
