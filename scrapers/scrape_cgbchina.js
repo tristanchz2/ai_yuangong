@@ -176,8 +176,8 @@ async function main() {
 
   // 初始化 JsonWriter
   const writer = new JsonWriter(OUTPUT_JSON, {
-    source: 'cgbchina',
-    scrapeTime: new Date().toISOString()
+    source: '广发银行',
+    scrapeTime: new Date().toISOString().substring(0, 13)
   });
 
   // 获取列表（API 一次性返回所有数据）
@@ -237,12 +237,10 @@ async function main() {
 
     // 构建数据行
     const row = {
-      id: item.ID,
       title: item.TITLE,
-      date: item.TIME,
-      content: detail.content,
+      publishTime: item.TIME,
       url: `https://gfcg.cgbchina.com.cn/html/gf/purchasereport.html?code=${item.ID}`,
-      scraped_at: new Date().toISOString()
+      content: detail.content,
     };
 
     // 增量写入

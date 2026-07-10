@@ -136,10 +136,10 @@ function getYesterday() {
 
 function rowToOutput(r) {
   return {
-    id: r.id, url: BASE_URL + r.id,
-    title: r.noticeTitle, publishTime: r.publishTime,
-    purchaser: r.userName, method: r.purchaseTypeLable, region: r.area,
-    category: r.labelAllId, tags: r.yxCategoryNames, source: r.noticeSource,
+    title: r.noticeTitle,
+    noticeType: r.noticeType || '',
+    publishTime: r.publishTime,
+    url: BASE_URL + r.id,
     content: stripHtml(r.noticeContent),
   };
 }
@@ -251,20 +251,20 @@ async function main() {
       else { console.error('⚠ 无数据文件，用 --list 5 先爬列表'); process.exit(1); }
     }
     if (isResume) {
-      writer = new JsonWriter(OUTPUT_JSON, { source: '金采网', scrapeTime: new Date().toISOString() });
+      writer = new JsonWriter(OUTPUT_JSON, { source: '金采网', scrapeTime: new Date().toISOString().substring(0, 13) });
       existing.rows.forEach((r) => writer.addRow(r));
       startDetailIdx = existing.rows.findIndex((r) => !r.content);
       if (startDetailIdx < 0) startDetailIdx = existing.rows.length;
       console.log(`♻ 续爬: ${existing.rows.length} 条, 正文从第 ${startDetailIdx + 1} 条\n`);
     } else {
-      writer = new JsonWriter(OUTPUT_JSON, { source: '金采网', scrapeTime: new Date().toISOString() });
+      writer = new JsonWriter(OUTPUT_JSON, { source: '金采网', scrapeTime: new Date().toISOString().substring(0, 13) });
       existing.rows.forEach((r) => writer.addRow(r));
       console.log(`📂 加载 ${existing.rows.length} 条\n`);
     }
     allRows = existing.rows; // already in output format
   } else {
     // 从列表阶段的数据初始化写入器
-    writer = new JsonWriter(OUTPUT_JSON, { source: '金采网', scrapeTime: new Date().toISOString() });
+    writer = new JsonWriter(OUTPUT_JSON, { source: '金采网', scrapeTime: new Date().toISOString().substring(0, 13) });
     for (const row of allRows) {
       writer.addRow(rowToOutput(row));
     }

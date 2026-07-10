@@ -245,7 +245,7 @@ async function main() {
 
     if (allItems.length === 0) {
       console.log('✓ 无匹配数据');
-      new JsonWriter(OUTPUT_JSON, { source: '农银e采', scrapeTime: new Date().toISOString() });
+      new JsonWriter(OUTPUT_JSON, { source: '农银e采', scrapeTime: new Date().toISOString().substring(0, 13) });
       await cycleTLS.exit();
       return;
     }
@@ -253,7 +253,7 @@ async function main() {
     // ---- 初始化增量写入器 ----
     const writer = new JsonWriter(OUTPUT_JSON, {
       source: '农银e采',
-      scrapeTime: new Date().toISOString(),
+      scrapeTime: new Date().toISOString().substring(0, 13),
     });
 
     // ---- 详情爬取 ----
@@ -280,8 +280,10 @@ async function main() {
       }
 
       writer.addRow({
-        publishTime: (item.publishTime || item.startTime || '').substring(0, 10),
+        title: item.messageTitle || '',
         noticeType: item.noticeType || MESSAGE_TYPE_MAP[item.messageType] || `类型${item.messageType}`,
+        publishTime: (item.publishTime || item.startTime || '').substring(0, 10),
+        url: `https://jc.abchina.com.cn/puc/#/notice/detail/${item.messageId}`,
         content: stripHtml(item.content) || stripHtml(item.messageTitle),
       });
     }

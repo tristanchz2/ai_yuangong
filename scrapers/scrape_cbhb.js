@@ -204,8 +204,8 @@ async function main() {
 
   // 初始化 JSON writer
   const writer = new JsonWriter(OUTPUT_JSON, {
-    source: 'cbhb',
-    scrapeTime: new Date().toISOString()
+    source: '渤海银行',
+    scrapeTime: new Date().toISOString().substring(0, 13)
   });
 
   // 获取所有列表项
@@ -297,10 +297,9 @@ async function main() {
       // 写入数据
       const rowData = {
         title: item.title,
-        date: item.date,
+        publishTime: item.date,
         url: item.detailUrl,
         content,
-        scrapedAt: new Date().toISOString()
       };
 
       writer.addRow(rowData);

@@ -346,25 +346,20 @@ async function main() {
 
   if (allEntries.length === 0) {
     console.log('  ✓ 该日期范围内无数据');
-    new JsonWriter(OUTPUT_JSON, { source: '中国政府采购网', scrapeTime: new Date().toISOString() });
+    new JsonWriter(OUTPUT_JSON, { source: '中国政府采购网', scrapeTime: new Date().toISOString().substring(0, 13) });
     return;
   }
 
   // ---- 初始化增量写入器 ----
   const writer = new JsonWriter(OUTPUT_JSON, {
     source: '中国政府采购网',
-    scrapeTime: new Date().toISOString(),
+    scrapeTime: new Date().toISOString().substring(0, 13),
   });
   for (const e of allEntries) {
     writer.addRow({
       title: stripHtml(e.title),
+      publishTime: e.date,
       url: e.url,
-      date: e.date,
-      purchaser: e.purchaser,
-      agent: e.agent,
-      bidType: e.bidType,
-      region: e.region,
-      category: e.category,
       content: '',
     });
   }
@@ -397,18 +392,13 @@ async function main() {
 
   const finalWriter = new JsonWriter(OUTPUT_JSON, {
     source: '中国政府采购网',
-    scrapeTime: new Date().toISOString(),
+    scrapeTime: new Date().toISOString().substring(0, 13),
   });
   for (const e of deduped) {
     finalWriter.addRow({
       title: stripHtml(e.title),
+      publishTime: e.date,
       url: e.url,
-      date: e.date,
-      purchaser: e.purchaser,
-      agent: e.agent,
-      bidType: e.bidType,
-      region: e.region,
-      category: e.category,
       content: stripHtml(e.content || ''),
     });
   }

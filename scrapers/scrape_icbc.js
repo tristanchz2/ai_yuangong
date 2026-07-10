@@ -303,14 +303,14 @@ async function main() {
 
   if (allItems.length === 0) {
     console.log('✓ 无匹配数据');
-    new JsonWriter(OUTPUT_JSON, { source: '工银集采', scrapeTime: new Date().toISOString() });
+    new JsonWriter(OUTPUT_JSON, { source: '工银集采', scrapeTime: new Date().toISOString().substring(0, 13) });
     return;
   }
 
   // ---- 初始化增量写入器 ----
   const writer = new JsonWriter(OUTPUT_JSON, {
     source: '工银集采',
-    scrapeTime: new Date().toISOString(),
+    scrapeTime: new Date().toISOString().substring(0, 13),
   });
 
   // ---- 爬取详情 ----
@@ -345,10 +345,7 @@ async function main() {
     writer.addRow({
       publishTime: formatIssueDate(item.issueDate),
       title: item.noticeTitle,
-      branch: item.structName,
-      projType: item.projTypeName,
-      status: item.noticeStatus,
-      sourceUrl: item.noticeUrl || '',
+      url: item.noticeUrl || '',
       content: stripHtml(item._content),
     });
   }

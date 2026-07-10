@@ -32,6 +32,7 @@ Thumbs.db
 logs/
 raw_data/
 processed_data/
+extracted_data/
 *.log
 
 # 临时文件

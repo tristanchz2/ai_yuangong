@@ -187,8 +187,8 @@ async function main() {
   console.log(`\n🚀 开始爬取中国邮政招标公告 (模式: ${mode})`);
 
   const writer = new JsonWriter(OUTPUT_JSON, {
-    source: 'chinapost',
-    scrapeTime: new Date().toISOString()
+    source: '中国邮政',
+    scrapeTime: new Date().toISOString().substring(0, 13)
   });
 
   let items = [];
@@ -247,12 +247,10 @@ async function main() {
       const content = parseDetailPage(html);
       
       const record = {
-        id: item.detailUrl.match(/\/(\d+)-1\.htm/)[1],
         title: item.title,
-        date: item.date,
+        publishTime: item.date,
         url: detailUrl,
         content: content,
-        scraped_at: new Date().toISOString()
       };
       
       writer.addRow(record);

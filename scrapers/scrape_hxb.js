@@ -170,8 +170,7 @@ async function main() {
   // 3. Init writer
   const writer = new JsonWriter(OUTPUT_JSON, {
     source: '华夏银行',
-    category: '招标公告',
-    scrapeTime: new Date().toISOString(),
+    scrapeTime: new Date().toISOString().substring(0, 13),
   });
 
   // 4. Fetch detail pages
@@ -192,8 +191,7 @@ async function main() {
 
     writer.addRow({
       title: item.title,
-      date: item.date,
-      branch: item.branch,
+      publishTime: item.date,
       url: item.url,
       content: content || item.title,
     });
