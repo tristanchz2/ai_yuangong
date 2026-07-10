@@ -9,6 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends, Header
 from pydantic import BaseModel
+from routers.scraper import run_hermes_generate, tasks as generate_tasks
 
 router = APIRouter(prefix="/api/admin", tags=["管理员"])
 
@@ -85,6 +86,7 @@ async def list_sites(_=Depends(verify_admin_token)):
 
 @router.post("/sites")
 async def add_site(site: SiteCreate, _=Depends(verify_admin_token)):
+    import time
     sites = load_sites()
     for s in sites:
         if s["url"] == site.url:
@@ -101,7 +103,38 @@ async def add_site(site: SiteCreate, _=Depends(verify_admin_token)):
     }
     sites.append(new_site)
     save_sites(sites)
-    return new_site
+    
+    # 触发爬虫生成
+    task_id = f"task_{int(time.time() * 1000)}"
+    generate_tasks[task_id] = {
+        'task_id': task_id,
+        'task_type': 'generate',
+        'status': 'pending',
+        'url': site.url,
+        'scraper_name': scraper_name,
+        'created_at': time.time(),
+    }
+    
+    # 后台运行爬虫生成，失败时回滚
+    async def generate_with_rollback():
+        try:
+            await run_hermes_generate(task_id, site.url, scraper_name)
+            # 检查是否成功
+            task = generate_tasks.get(task_id)
+            if task and task.get('status') != 'success':
+                # 生成失败，回滚网站注册
+                current_sites = load_sites()
+                current_sites = [s for s in current_sites if s["id"] != new_id]
+                save_sites(current_sites)
+        except Exception as e:
+            # 异常时回滚
+            current_sites = load_sites()
+            current_sites = [s for s in current_sites if s["id"] != new_id]
+            save_sites(current_sites)
+    
+    asyncio.create_task(generate_with_rollback())
+    
+    return {**new_site, "task_id": task_id, "message": "网站已添加，爬虫正在生成"}
 
 
 @router.delete("/sites/{site_id}")
@@ -222,4 +255,47 @@ async def cancel_batch_scrape(task_id: str, _=Depends(verify_admin_token)):
         raise HTTPException(status_code=400, detail=f"任务不在运行中 (当前状态: {task.status})")
     task.request_cancel()
     return {"message": "任务已终止", "task_id": task_id}
+
+
+@router.get("/tasks")
+async def get_all_tasks(_=Depends(verify_admin_token)):
+    """获取所有任务历史（爬取任务 + 爬虫生成任务），按时间倒序"""
+    from routers.batch_scraper import batch_tasks
+    
+    all_tasks = []
+    
+    # 爬取任务
+    for task_id, task in batch_tasks.items():
+        task_dict = task.to_dict()
+        duration = (task.finished_at - task.started_at) if task.started_at and task.finished_at else None
+        all_tasks.append({
+            'task_id': task_id,
+            'type': 'batch_scrape',
+            'status': task_dict['status'],
+            'description': f"批量爬取 {task_dict['total_sites']} 个站点",
+            'created_at': task.created_at,
+            'duration': duration,
+            'details': task_dict
+        })
+    
+    # 爬虫生成任务
+    for task_id, task in generate_tasks.items():
+        duration = None
+        if task.get('started_at') and task.get('finished_at'):
+            duration = task['finished_at'] - task['started_at']
+        
+        all_tasks.append({
+            'task_id': task_id,
+            'type': 'generate_scraper',
+            'status': task['status'],
+            'description': f"生成爬虫: {task.get('scraper_name', 'unknown')}",
+            'created_at': task['created_at'],
+            'duration': duration,
+            'details': task
+        })
+    
+    # 按创建时间倒序
+    all_tasks.sort(key=lambda x: x['created_at'], reverse=True)
+    
+    return {'tasks': all_tasks}
 

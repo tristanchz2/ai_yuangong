@@ -1,17 +1,46 @@
 ---
 name: gen-scraper
 description: "URL → 全自动爬虫生成。Hermes 用浏览器探索网站，生成代码，测试，修复。不问问题。"
-version: 3.0.0
+version: 4.0.0
 ---
 
 # URL → 全自动爬虫生成
 
-用户发一个 URL，Hermes 全自动完成：浏览器探索 → 代码生成 → 测试 → 修复。
+用户发一个 URL，Hermes 全自动完成：浏览器探索 → 代码生成 → 测试 → 修复 → 注册。
 **全程不问用户任何问题。所有决策预设。**
 
 ## 触发条件
 
 用户发了一个 URL 并说"帮我爬"/"生成爬虫"之类的话。
+
+## 项目架构（必须遵守）
+
+```
+ai_yuangong/
+├── scrapers/              # 爬虫文件（Node.js）← 你的爬虫放这里
+│   ├── utility/
+│   │   ├── stripHtml.js   # HTML → 纯文本工具
+│   │   └── JsonWriter.js  # 增量 JSON 写入器
+│   └── scrape_<name>.js   # 每个站点一个爬虫脚本
+├── raw_data/              # 爬虫原始输出 JSON ← 你的数据输出到这里
+│   └── <name>_data.json
+├── extracted_data/        # LLM 提取后的结构化数据（按公告类型+日期分文件）
+│   ├── 采购公告/
+│   ├── 结果公告/
+│   └── 其他/
+├── sites.json             # 站点注册表 ← 你需要在这里注册新站点
+├── extract_fields.py      # LLM 字段提取器
+├── run_scrapers.py        # CLI 运行入口（自动发现 scrapers/scrape_*.js）
+├── routers/
+│   ├── batch_scraper.py   # 批量爬取调度（依赖 sites.json）
+│   └── scraper.py         # 爬虫自动生成（调用你的 Hermes）
+└── server.py              # FastAPI 主服务
+```
+
+**数据流水线：**
+```
+爬虫 (Node.js) → raw_data/<name>_data.json → LLM提取 (extract_fields.py) → extracted_data/{notice_type}/{date}.json
+```
 
 ## 预设决策（不需要问用户）
 
@@ -22,8 +51,8 @@ version: 3.0.0
 | CLI 接口 | `--info` / `--latest N` / `--yesterday` / `--date YYYY-MM-DD` |
 | 工具函数 | `stripHtml` + `JsonWriter`（项目已有） |
 | 爬虫名称 | 从域名推导 |
-| 输出路径 | `agent_workspace/scrapers/scrape_<name>.js` |
-| 数据路径 | `raw_data/<name>_data.json` |
+| 爬虫文件路径 | `scrapers/scrape_<name>.js` |
+| 数据输出路径 | `raw_data/<name>_data.json` |
 | 错误处理 | `requestWithBackoff`（限频退避） |
 | 请求间隔 | 2-5 秒 |
 
@@ -161,10 +190,10 @@ import sys, re
 html = sys.stdin.read()
 # 尝试多种选择器
 for cls in ['article-content', 'news_content', 'TRS_Editor', 'content', 'detail-content', 'post-content', 'article']:
-    m = re.search(f'<div class=\\\"[^\\\"]*{cls}[^\\\"]*\\\">([\\\\s\\\\S]*?)</div>', html, re.IGNORECASE)
+    m = re.search(f'<div class=\\\\\"[^\\\\\"]*{cls}[^\\\\\"]*\\\\\">([\\\\s\\\\S]*?)</div>', html, re.IGNORECASE)
     if m:
         text = re.sub(r'<[^>]+>', ' ', m.group(1))
-        text = re.sub(r'\\s+', ' ', text).strip()
+        text = re.sub(r'\\\\s+', ' ', text).strip()
         print(f'{cls}: {len(text)} chars')
         print(f'Preview: {text[:300]}')
         print()
@@ -194,12 +223,17 @@ for i, t in enumerate(texts[:10]):
 - **正文选择器**：如 `<div class="article-content">` 或所有 `<p>` 标签
 - **正文提取正则**：如 `/<div class="article-content">([\s\S]*?)<\/div>/`
 - **附件选择器**（如有）
+- **noticeType**：如果页面/API 有公告类型信息（采购公告/结果公告/招标公告/变更公告），记录下来
 
 ---
 
 ### Phase 2: 生成爬虫代码
 
-用 `write_file` 写入 `agent_workspace/scrapers/scrape_<name>.js`。
+用 `write_file` 写入 `scrapers/scrape_<name>.js`。
+
+**🚨 关键路径规则：**
+- 爬虫文件：`scrapers/scrape_<name>.js`
+- OUTPUT_JSON：`path.join(__dirname, '..', 'raw_data', '<name>_data.json')` — **只用一层 `..`**，因为爬虫在 `scrapers/` 目录下运行
 
 **代码必须包含：**
 
@@ -208,8 +242,9 @@ for i, t in enumerate(texts[:10]):
  * <网站名称> (<缩写>) <描述>
  *
  * Usage:
- *   node scrape_<name>.js --latest 5    # 爬取最新 N 条
- *   node scrape_<name>.js --yesterday   # 爬取昨天数据
+ *   node scrape_<name>.js --info             # 输出元数据 JSON
+ *   node scrape_<name>.js --latest 5         # 爬取最新 N 条
+ *   node scrape_<name>.js --yesterday        # 爬取昨天数据
  *   node scrape_<name>.js --date YYYY-MM-DD  # 爬取指定日期
  */
 
@@ -219,18 +254,19 @@ const path = require('path');
 const { stripHtml } = require('./utility/stripHtml');
 const { JsonWriter } = require('./utility/JsonWriter');
 
-const OUTPUT_JSON = path.join(__dirname, '..', '..', 'raw_data', '<name>_data.json');
+// ★ 路径只用一层 ..，因为爬虫在 scrapers/ 下运行
+const OUTPUT_JSON = path.join(__dirname, '..', 'raw_data', '<name>_data.json');
 
 // ===================== HTTP 请求 =====================
 // 根据目标网站选 http 或 https
-// 必须包含：重试、超时、错误处理
+// 必须包含：重试、超时(15-30s)、错误处理
 
 // ===================== 限频退避 =====================
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function requestWithBackoff(requestFn, label) {
-  let delay = 5000;
-  const MAX_ATTEMPTS = 6;
+  let delay = 5000;  // 初始 3-5s
+  const MAX_ATTEMPTS = 6;  // 最多 4-6 次重试
   const MAX_DELAY = 120000;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
@@ -264,6 +300,12 @@ function formatDate(d) {
 }
 function getYesterday() {
   const d = new Date(); d.setDate(d.getDate() - 1); return formatDate(d);
+}
+// ★ 必须用本地时间，禁止 toISOString()（那是 UTC）
+function formatScrapeTime() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}`;
 }
 
 // ===================== 详情解析（关键！） =====================
@@ -306,18 +348,19 @@ function parseDetailPage(html) {
     console.warn('    ⚠ 提取的内容过短，可能提取失败');
   }
   
-  return { content };
+  return content;
 }
 
 // ===================== 主流程 =====================
 async function main() {
   const args = process.argv.slice(2);
 
+  // ★ --info 必须输出合法 JSON（被 run_scrapers.py 和 batch_scraper.py 解析）
   if (args.includes('--info')) {
     console.log(JSON.stringify({
       name: '<name>',
       description: '<描述>',
-      modes: ['latest', 'yesterday'],
+      modes: ['latest', 'yesterday', 'date'],
       outputFile: 'raw_data/<name>_data.json',
     }));
     return;
@@ -336,6 +379,7 @@ async function main() {
   // 2. 日期过滤（如果有 targetDate）
   // 3. 获取详情（如果需要）- 必须调用 parseDetailPage
   // 4. JsonWriter 增量写入
+  // 5. 每条 row 必须包含: title, content, publishTime, url, noticeType(推荐)
 }
 
 main().catch((e) => { console.error('失败:', e.message); process.exit(1); });
@@ -351,8 +395,30 @@ main().catch((e) => { console.error('失败:', e.message); process.exit(1); });
 6. 所有请求用 `requestWithBackoff` 包装
 7. 用 `JsonWriter` 增量写入（每条详情写完立即写磁盘）
 8. 用 `stripHtml()` 处理 HTML 内容
-9. 请求间隔 sleep 2-5 秒
-10. console.log 输出进度
+9. 请求间隔 `sleep(1500~5000)` + 随机抖动
+10. console.log 输出进度，如 `[1/10] 标题前40字... ✓`
+
+**🚨 Row 字段规范（严格遵守）：**
+
+每条 row 必须包含：
+
+| 字段 | 必填 | 类型 | 说明 |
+|------|------|------|------|
+| `title` | **是** | string | 公告标题 |
+| `content` | **是** | string | 公告正文纯文本（用 `stripHtml()` 处理），**不能等于 title**，长度应 > 200 字 |
+| `publishTime` | **是** | string | 发布时间，格式 `YYYY-MM-DD` 或 `YYYY-MM-DD HH:mm` |
+| `url` | **是** | string | 公告详情页 URL |
+| `noticeType` | **推荐** | string | 公告类型，如 `"采购公告"`、`"结果公告"`、`"招标公告"`、`"变更公告"` 等 |
+
+**🚨 noticeType 的重要性：**
+- `extract_fields.py` 会优先使用 raw_data 中已有的 `noticeType`/`bidType`/`method`，映射为严格枚举（`采购公告` / `结果公告` / `其他`）
+- 如果爬虫不提供，会 fallback 到 LLM 分类或标题关键词推断，但准确率较低
+- **如果平台 API/页面提供了类型信息，必须在 row 里保留！**
+- 如果平台 API 返回数字码（如 `MESSAGE_TYPE=1`），用 MAP 映射为中文类型名
+
+**🚨 scrapeTime 格式（重要）：**
+- 必须用本地时间：`formatScrapeTime()` 返回 `YYYY-MM-DDTHH`
+- **禁止使用 `toISOString()`**（那是 UTC 时间，和本地时间差 8 小时）
 
 **🚨 详情解析规则（最重要！）：**
 
@@ -365,14 +431,14 @@ main().catch((e) => { console.error('失败:', e.message); process.exit(1); });
 
 **3.1 验证 --info**
 ```bash
-cd /Users/tristcz/project/ai_yuangong/agent_workspace
-node scrapers/scrape_<name>.js --info
+cd /Users/tristcz/project/ai_yuangong/scrapers
+node scrape_<name>.js --info
 ```
 必须输出合法 JSON。
 
 **3.2 验证 --latest 1（单条测试，快速发现问题）**
 ```bash
-node scrapers/scrape_<name>.js --latest 1
+node scrape_<name>.js --latest 1
 ```
 
 **🚨 3.3 验证 content 质量（必须做！）**
@@ -380,6 +446,7 @@ node scrapers/scrape_<name>.js --latest 1
 测试完成后，立即检查输出的 JSON：
 
 ```bash
+cd /Users/tristcz/project/ai_yuangong
 python3 -c "
 import json
 with open('raw_data/<name>_data.json') as f:
@@ -410,13 +477,14 @@ else:
 
 **3.4 验证 --latest 3（批量测试）**
 ```bash
-node scrapers/scrape_<name>.js --latest 3
+node scrape_<name>.js --latest 3
 ```
 检查所有条目的 content 都正常。
 
 **3.5 验证自动发现**
 ```bash
-python3 run.py list
+cd /Users/tristcz/project/ai_yuangong
+python3 run_scrapers.py --list
 ```
 新爬虫必须出现在列表中。
 
@@ -431,15 +499,11 @@ python3 run.py list
    - 网络错误 → 检查请求头（Referer/User-Agent）
    - 解析错误 → 回浏览器重新看页面结构
    - **content 只有标题** → 详情页 HTML 结构分析错误，重新用 curl 查看真实 HTML
+   - **OUTPUT_JSON 路径 ENOENT** → 检查是否多了一层 `..`，正确：`path.join(__dirname, '..', 'raw_data', ...)`
+   - **scrapeTime 时间不对** → 检查是否误用了 `toISOString()`（UTC）
 3. 用 `patch` 修复代码
 4. 重新测试
 5. 最多修复 3 轮
-
-**修复时可以用浏览器再验证：**
-```
-browser_navigate(url=<目标URL>)
-browser_console(expression=`fetch('<API_URL>').then(r=>r.json()).then(j=>JSON.stringify(j).substring(0,2000))`)
-```
 
 **修复详情页解析时，用 curl + python 验证：**
 ```bash
@@ -448,34 +512,122 @@ import sys, re
 html = sys.stdin.read()
 # 尝试多种选择器
 for cls in ['article-content', 'news_content', 'TRS_Editor', 'content']:
-    m = re.search(f'<div class=\\\"[^\\\"]*{cls}[^\\\"]*\\\">([\\s\\S]*?)</div>', html, re.IGNORECASE)
+    m = re.search(f'<div class=\\\\\"[^\\\\\"]*{cls}[^\\\\\"]*\\\\\">([\\\\s\\\\S]*?)</div>', html, re.IGNORECASE)
     if m:
         text = re.sub(r'<[^>]+>', ' ', m.group(1))
-        text = re.sub(r'\\s+', ' ', text).strip()
+        text = re.sub(r'\\\\s+', ' ', text).strip()
         print(f'{cls}: {len(text)} chars')
         print(f'Preview: {text[:300]}')
         break
 "
 ```
 
+### Phase 5: 注册到 sites.json
+
+**测试全部通过后**，将新爬虫注册到 `sites.json`，使批量爬取系统能够发现它。
+
+**5.1 读取当前 sites.json**
+```bash
+cat sites.json
+```
+
+**5.2 找到当前最大 id**
+查看 `sites.json` 中 `sites` 数组里最大的 `id` 值。
+
+**5.3 添加新站点条目**
+用 `patch` 在 `sites` 数组末尾添加：
+```json
+{
+  "id": <当前最大id + 1>,
+  "name": "<网站中文名>",
+  "url": "<目标网站URL>",
+  "scraper_name": "<name>",
+  "description": "<网站描述>",
+  "status": "active",
+  "hidden": false
+}
+```
+
+**字段说明：**
+- `id`：当前最大 id + 1（不能重复）
+- `name`：网站中文名称（用于前端显示）
+- `url`：网站首页 URL
+- `scraper_name`：**必须和爬虫文件名一致**（`scrape_<scraper_name>.js`）
+- `description`：简短描述
+- `status`：固定 `"active"`
+- `hidden`：设为 `false` 才会在批量爬取中被执行
+
+**5.4 验证 JSON 合法性**
+```bash
+python3 -c "import json; json.load(open('sites.json')); print('✅ sites.json 格式正确')"
+```
+
+---
+
 ## 参考文件
 
 生成代码时参考现有爬虫：
 - `scrape_icbc.js` — POST API + 分页 + 详情
 - `scrape_cfcpn.js` — POST API + 分页 + 日期过滤
-- `scrape_ccgp.js` — HTML 解析 + 搜索 + 去重
-- `scrape_abc_puc.js` — cycletls TLS 指纹 + API
+- `scrape_chinapost.js` — HTML 解析 + 翻页 + 日期过滤
+- `scrape_abc_puc.js` — cycletls TLS 指纹 + API + noticeType 映射
+- `scrape_cdb.js` — HTML 解析 + 多策略提取链
 
 工具函数：
-- `utility/stripHtml.js` — HTML → 纯文本
-- `utility/JsonWriter.js` — 增量 JSON 写入器
+- `scrapers/utility/stripHtml.js` — HTML → 纯文本
+- `scrapers/utility/JsonWriter.js` — 增量 JSON 写入器
+
+完整开发规范：
+- `SCRAPER_DEV_GUIDE.md` — 项目根目录下的详细开发规范和更多示例
+
+## 允许的操作范围
+
+你可以且仅可以做以下操作：
+
+1. **新建一个文件**：`scrapers/scrape_<name>.js`（你的爬虫代码）
+2. **修改 `sites.json`**：在 `sites` 数组中添加新站点注册信息
+3. **读取/测试**：运行你的爬虫、读取输出 JSON、检查质量
+4. **读取现有文件**：参考现有爬虫和工具函数
+
+**你绝对不能做的：**
+- ❌ 修改任何其他项目文件（server.py、extract_fields.py、其他爬虫等）
+- ❌ 删除任何其他文件
+- ❌ 修改 `scrapers/utility/` 下的工具函数
+- ❌ 修改 `extracted_data/` 下的数据
 
 ## 禁止行为
 
-- **不要动任何项目文件，只能生成一个你自己写的爬虫文件**
 - 不要问用户任何问题
-- 不要使用外部 npm 包（只用 Node.js 内置模块 + 项目工具函数）
+- 不要使用外部 npm 包（只用 Node.js 内置模块 + 项目工具函数；`cycletls` 例外）
 - 不要生成不完整的代码
 - 不要使用 Playwright/puppeteer 作为爬虫运行时
 - **不要跳过 Phase 1.6（详情页探索）**
 - **不要跳过 Phase 3.3（content 质量验证）**
+- **不要跳过 Phase 5（sites.json 注册）**
+- ❌ 不使用 `toISOString()` 生成 scrapeTime
+- ❌ OUTPUT_JSON 路径不多余嵌套 `..`
+- ❌ 不跳过详情页爬取（content 不能只有标题）
+
+## 自动化集成（server.py 调用）
+
+当通过 `hermes chat -q` 作为子进程调用时：
+- **必须使用 `--yolo`**：否则命令审批系统会拒绝 shell 命令 → agent 以为用户有顾虑 → 提问 → 无人回答 → 卡死
+- **prompt 必须包含**："不要问我任何问题，所有决策你自己做，遇到错误自己修复"
+- **20 分钟硬限制**：server.py 有总超时兜底，超过 20 分钟直接 kill。不要在某个步骤上死等
+- **诊断 hang**：检查 `~/.hermes/logs/errors.log`，找 "Stream stale"（LLM 响应卡死）或 "User denied"（命令被审批拒绝）
+
+详见 `references/automation-integration.md`。
+
+## 常见问题 Checklist
+
+| 问题 | 解决方案 |
+|------|----------|
+| OUTPUT_JSON 路径 ENOENT | 检查是否多了一层 `..`，正确写法：`path.join(__dirname, '..', 'raw_data', ...)` |
+| scrapeTime 时间不对 | 用 `new Date()` 本地时间，不要用 `toISOString()`（UTC） |
+| content 等于 title | 详情页解析失败，需要用 curl 检查真实 HTML 结构，调整选择器 |
+| content 过短 (<200字) | 实现多策略提取链，fallback 到 `<p>` 标签提取 |
+| noticeType 丢失 | 如果平台 API/HTML 中有类型信息，务必保留在 row 中 |
+| 被 WAF 拦截 | 考虑使用 `cycletls` 模拟 TLS 指纹 |
+| 日期过滤不生效 | 检查 API 是否支持日期参数，不支持则在客户端过滤 |
+| run_scrapers.py --list 看不到新爬虫 | 检查爬虫文件是否在 `scrapers/scrape_<name>.js`，文件名是否正确 |
+| 批量爬取不执行新爬虫 | 检查 sites.json 是否已注册，`hidden` 是否为 `false` |

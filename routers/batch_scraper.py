@@ -155,8 +155,9 @@ class BatchScraperTask:
         self.finished_at = time.time()
 
 
-# 全局任务存储
+# 全局任务存储（保留最近5个）
 batch_tasks: Dict[str, BatchScraperTask] = {}
+MAX_BATCH_TASKS = 5
 
 
 async def run_batch_scrape(task: BatchScraperTask, sites: List[Dict]):
@@ -513,6 +514,12 @@ def create_batch_task(mode: str = "yesterday") -> BatchScraperTask:
     task_id = f"batch_{int(time.time() * 1000)}"
     task = BatchScraperTask(task_id, mode)
     batch_tasks[task_id] = task
+    
+    # 保留最近5个任务
+    if len(batch_tasks) > MAX_BATCH_TASKS:
+        oldest = min(batch_tasks, key=lambda k: batch_tasks[k].created_at)
+        del batch_tasks[oldest]
+    
     return task
 
 

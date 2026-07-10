@@ -16,6 +16,7 @@ SCRAPERS_DIR = PROJECT_ROOT / "scrapers"
 
 # 任务状态存储（内存存储，生产环境应换 Redis/DB）
 tasks: Dict[str, dict] = {}
+MAX_GENERATE_TASKS = 5  # 保留最近5个爬虫生成任务
 
 
 class GenerateRequest(BaseModel):
@@ -332,8 +333,15 @@ async def generate_scraper(req: GenerateRequest):
 
     task_id = f"task_{int(time.time() * 1000)}"
 
+    # 清理旧任务，保留最近5个
+    if len(tasks) >= MAX_GENERATE_TASKS:
+        sorted_tasks = sorted(tasks.keys(), key=lambda k: tasks[k]['created_at'])
+        for old_id in sorted_tasks[:len(tasks) - MAX_GENERATE_TASKS + 1]:
+            del tasks[old_id]
+
     tasks[task_id] = {
         'task_id': task_id,
+        'task_type': 'generate',
         'status': 'pending',
         'url': clean_url,
         'scraper_name': None,
@@ -343,6 +351,7 @@ async def generate_scraper(req: GenerateRequest):
         'finished_at': None,
         'duration': None,
         'hermes_output': '',
+        'created_at': time.time(),
     }
 
     asyncio.create_task(run_hermes_generate(task_id, clean_url, req.name))
@@ -405,4 +414,31 @@ async def get_logs(task_id: str):
         'status': task['status'],
         'log': content,
         'log_file': log_file,
+    }
+
+
+@router.get("/generate-tasks")
+async def list_generate_tasks():
+    """列出所有爬虫生成任务"""
+    # 按创建时间倒序
+    sorted_tasks = sorted(
+        tasks.values(),
+        key=lambda t: t.get('created_at', 0),
+        reverse=True
+    )
+    return {
+        'total': len(sorted_tasks),
+        'tasks': [
+            {
+                'task_id': t['task_id'],
+                'type': 'generate_scraper',
+                'status': t['status'],
+                'url': t['url'],
+                'scraper_name': t.get('scraper_name'),
+                'duration': t.get('duration'),
+                'started_at': t.get('started_at'),
+                'created_at': t.get('created_at'),
+            }
+            for t in sorted_tasks
+        ]
     }
