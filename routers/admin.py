@@ -192,3 +192,21 @@ async def get_batch_status(task_id: str, _=Depends(verify_admin_token)):
         raise HTTPException(status_code=404, detail="任务不存在")
     return task.to_dict()
 
+
+@router.get("/batch-scrape/{task_id}/sites/{site_id}/logs")
+async def get_site_logs(task_id: str, site_id: int, _=Depends(verify_admin_token)):
+    """获取单个站点的终端日志"""
+    from routers.batch_scraper import get_batch_task
+    task = get_batch_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    for st in task.site_tasks:
+        if st.site["id"] == site_id:
+            return {
+                "site_id": site_id,
+                "site_name": st.site["name"],
+                "status": st.status,
+                "logs": st.logs,
+            }
+    raise HTTPException(status_code=404, detail=f"站点不存在: id={site_id}")
+

@@ -7,7 +7,7 @@
       "scraper_name": "abc_puc",
       "description": "中国农业银行采购平台",
       "status": "active",
-      "hidden": false
+      "hidden": true
     },
     {
       "id": 2,
@@ -34,7 +34,7 @@
       "scraper_name": "ccgp",
       "description": "中国政府采购网",
       "status": "active",
-      "hidden": false
+      "hidden": true
     },
     {
       "id": 5,
@@ -47,10 +47,10 @@
     },
     {
       "id": 6,
-      "name": "中国金融期货交易所",
-      "url": "http://www.cffex.com.cn/",
+      "name": "金采网",
+      "url": "http://www.cfcpn.com/",
       "scraper_name": "cfcpn",
-      "description": "中国金融期货交易所",
+      "description": "金采网",
       "status": "active",
       "hidden": true
     },

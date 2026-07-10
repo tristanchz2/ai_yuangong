@@ -444,6 +444,12 @@ async def async_main():
         default=BATCH_SIZE,
         help=f"每次 LLM 调用处理的公告条数（默认 {BATCH_SIZE}）",
     )
+    parser.add_argument(
+        "--suffix",
+        type=str,
+        default=None,
+        help="输出文件名后缀（如 abc_puc_1234），用于区分不同运行。不加后缀则按日期覆盖。",
+    )
     args = parser.parse_args()
 
     # 确定要处理的文件
@@ -501,43 +507,57 @@ async def async_main():
     for folder in folders.values():
         folder.mkdir(parents=True, exist_ok=True)
 
-    # 按类型分组
-    grouped = {"采购公告": [], "结果公告": [], "其他": []}
+    # 按 scrape_time 的日期分组（同一天的一起保存）
+    # scrape_time 格式如 "2026-07-09T10..."，取前 10 位作为日期
+    date_groups = {}  # {date_str: {notice_type: [records]}}
     for r in all_results:
+        scrape_date = (r.get("scrape_time") or "")[:10]  # "2026-07-09"
+        if not scrape_date or len(scrape_date) < 10:
+            scrape_date = "unknown"
         nt = r.get("notice_type", "其他")
-        if nt not in grouped:
+        if nt not in ("采购公告", "结果公告", "其他"):
             nt = "其他"
-        grouped[nt].append(r)
+        if scrape_date not in date_groups:
+            date_groups[scrape_date] = {"采购公告": [], "结果公告": [], "其他": []}
+        date_groups[scrape_date][nt].append(r)
 
-    # 保存到对应文件夹，文件名用时间戳，不覆盖已有文件
+    # 保存到对应文件夹
+    # 如果指定了 --suffix，文件名包含后缀以避免并发覆盖；否则按日期覆盖
+    suffix = args.suffix  # 如 "abc_puc_1720000000"
+    folders = {
+        "采购公告": OUTPUT_DIR / "采购公告",
+        "结果公告": OUTPUT_DIR / "结果公告",
+        "其他": OUTPUT_DIR / "其他",
+    }
+    for folder in folders.values():
+        folder.mkdir(parents=True, exist_ok=True)
+
     saved_count = 0
-    for notice_type, records in grouped.items():
-        if not records:
-            continue
-        folder = folders[notice_type]
-        ts = int(time.time() * 1000)
-        filename = f"{ts}.json"
-        output_path = folder / filename
-        # 如果文件已存在，加序号避免覆盖
-        counter = 1
-        while output_path.exists():
-            filename = f"{ts}_{counter}.json"
+    for date_str, type_groups in date_groups.items():
+        for notice_type, records in type_groups.items():
+            if not records:
+                continue
+            folder = folders[notice_type]
+            if suffix:
+                filename = f"{date_str}_{suffix}.json"
+            else:
+                filename = f"{date_str}.json"
             output_path = folder / filename
-            counter += 1
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "extractedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    "noticeType": notice_type,
-                    "totalRecords": len(records),
-                    "records": records,
-                },
-                f,
-                ensure_ascii=False,
-                indent=2,
-            )
-        saved_count += len(records)
-        print(f"  📁 {notice_type}: {len(records)} 条 -> {output_path.name}")
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "extractedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        "scrapeDate": date_str,
+                        "noticeType": notice_type,
+                        "totalRecords": len(records),
+                        "records": records,
+                    },
+                    f,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+            saved_count += len(records)
+            print(f"  📁 {notice_type} ({date_str}): {len(records)} 条 -> {output_path.name}")
 
     print(f"\n✅ 提取完成！共 {saved_count} 条记录")
     print(f"📂 输出目录: {OUTPUT_DIR}")

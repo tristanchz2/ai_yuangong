@@ -10,15 +10,13 @@
   .header { background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); color: #fff; padding: 30px 20px; text-align: center; }
   .header h1 { font-size: 24px; }
   .container { max-width: 1100px; margin: 0 auto; padding: 30px 20px; }
-
-  /* 登录框 */
   .login-box { max-width: 400px; margin: 80px auto; background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.1); }
   .login-box h2 { text-align: center; margin-bottom: 24px; color: #1e3a5f; }
   .form-group { margin-bottom: 16px; }
   .form-group label { display: block; margin-bottom: 6px; font-size: 14px; color: #555; }
   .form-group input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
   .form-group input:focus { outline: none; border-color: #1e3a5f; }
-  .btn { padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; transition: all .2s; }
+  .btn { padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; transition: all .2s; position: relative; }
   .btn-primary { background: #1e3a5f; color: #fff; width: 100%; padding: 12px; }
   .btn-primary:hover { background: #2d5a87; }
   .btn-danger { background: #dc2626; color: #fff; padding: 6px 12px; font-size: 12px; }
@@ -33,15 +31,13 @@
   .btn-logout:hover { background: #4b5563; }
   .btn-cancel { background: #e5e7eb; color: #333; }
   .error-msg { color: #dc2626; font-size: 13px; margin-top: 8px; text-align: center; }
-
-  /* 管理面板 */
+  .task-dot { width: 8px; height: 8px; background: #4ade80; border-radius: 50%; display: inline-block; margin-right: 6px; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
   .panel { display: none; }
   .panel.active { display: block; }
   .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
   .toolbar h2 { font-size: 18px; color: #1e3a5f; }
   .toolbar-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-
-  /* 网站列表 */
   .site-table { width: 100%; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
   .site-table th { background: #f8fafc; padding: 12px 14px; text-align: left; font-size: 13px; color: #666; border-bottom: 1px solid #eee; }
   .site-table td { padding: 12px 14px; font-size: 14px; border-bottom: 1px solid #f0f0f0; }
@@ -52,68 +48,85 @@
   .status-active { background: #d1fae5; color: #047857; }
   .status-hidden { background: #fee2e2; color: #b91c1c; }
   .action-btns { display: flex; gap: 6px; }
-
-  /* 添加网站表单 */
   .add-form { background: #fff; padding: 24px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.06); display: none; }
   .add-form.active { display: block; }
   .add-form h3 { margin-bottom: 16px; color: #1e3a5f; }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .form-actions { margin-top: 16px; display: flex; gap: 10px; }
 
-  /* 批量任务进度面板 */
-  .task-panel { background: #fff; border-radius: 10px; padding: 24px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.06); display: none; }
-  .task-panel.active { display: block; }
-  .task-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-  .task-header h3 { color: #1e3a5f; }
-  .task-status { font-size: 14px; padding: 4px 12px; border-radius: 16px; }
-  .task-status.running { background: #dbeafe; color: #1d4ed8; }
-  .task-status.completed { background: #d1fae5; color: #047857; }
-  .task-status.pending { background: #fef3c7; color: #b45309; }
-  .task-status.failed { background: #fee2e2; color: #b91c1c; }
+  /* 弹窗 */
+  .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,.5); z-index: 1000; display: none; justify-content: center; align-items: center; }
+  .modal-overlay.active { display: flex; }
+  .modal { background: #fff; border-radius: 16px; width: 92%; max-width: 780px; max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.2); animation: modalIn .25s ease; }
+  @keyframes modalIn { from { transform: scale(.95) translateY(20px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+  .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid #eee; flex-shrink: 0; }
+  .modal-header h3 { font-size: 18px; color: #1e3a5f; }
+  .modal-close { width: 32px; height: 32px; border: none; background: #f3f4f6; border-radius: 8px; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #666; }
+  .modal-close:hover { background: #e5e7eb; }
+  .modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
 
-  .progress-bar { height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; margin-bottom: 12px; }
-  .progress-fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #1e3a5f); transition: width 0.3s; }
+  /* 统计 */
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .stat-card { text-align: center; padding: 12px 8px; background: #f8fafc; border-radius: 10px; }
+  .stat-card .label { font-size: 11px; color: #888; margin-bottom: 4px; }
+  .stat-card .value { font-size: 20px; font-weight: 700; color: #1e3a5f; }
+  .overall-progress { margin-bottom: 20px; }
+  .overall-progress .bar { height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; }
+  .overall-progress .fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #1e3a5f); transition: width 0.3s; }
+  .overall-progress .text { font-size: 12px; color: #888; margin-top: 4px; text-align: right; }
 
-  .task-info { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
-  .task-info-item { text-align: center; }
-  .task-info-item .label { font-size: 12px; color: #888; }
-  .task-info-item .value { font-size: 18px; font-weight: 600; color: #1e3a5f; }
-
-  .current-step { background: #f8fafc; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; }
-  .current-step .step-label { font-size: 12px; color: #888; }
-  .current-step .step-value { font-size: 14px; color: #333; margin-top: 4px; }
-
-  /* 日志面板 */
-  .log-panel { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 8px; font-family: 'Monaco', 'Menlo', monospace; font-size: 12px; max-height: 300px; overflow-y: auto; }
-  .log-line { margin-bottom: 4px; line-height: 1.5; }
+  /* 站点卡片 */
+  .site-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 10px; overflow: hidden; transition: box-shadow .2s; }
+  .site-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,.08); }
+  .site-card.expanded { border-color: #3b82f6; }
+  .site-card-header { display: flex; align-items: center; padding: 14px 16px; cursor: pointer; gap: 12px; }
+  .site-card-header:hover { background: #fafbfc; }
+  .site-icon { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .site-icon.idle { background: #f3f4f6; }
+  .site-icon.scraping { background: #dbeafe; }
+  .site-icon.llm_waiting { background: #fef3c7; }
+  .site-icon.llm_extracting { background: #ede9fe; }
+  .site-icon.completed { background: #d1fae5; }
+  .site-icon.failed { background: #fee2e2; }
+  .site-info { flex: 1; min-width: 0; }
+  .site-name-row { display: flex; align-items: center; gap: 8px; }
+  .site-name-row .name { font-weight: 600; font-size: 14px; color: #1e3a5f; }
+  .site-name-row .status-tag { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
+  .status-tag.idle { background: #f3f4f6; color: #666; }
+  .status-tag.scraping { background: #dbeafe; color: #1d4ed8; }
+  .status-tag.llm_waiting { background: #fef3c7; color: #b45309; }
+  .status-tag.llm_extracting { background: #ede9fe; color: #6d28d9; }
+  .status-tag.completed { background: #d1fae5; color: #047857; }
+  .status-tag.failed { background: #fee2e2; color: #b91c1c; }
+  .site-progress-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .site-progress-bar { flex: 1; height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden; }
+  .site-progress-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+  .site-progress-fill.idle { width: 0; background: #ccc; }
+  .site-progress-fill.scraping { width: 40%; background: #3b82f6; animation: pp 1.5s infinite; }
+  .site-progress-fill.llm_waiting { width: 50%; background: #f59e0b; }
+  .site-progress-fill.llm_extracting { width: 75%; background: #8b5cf6; animation: pp 1.5s infinite; }
+  .site-progress-fill.completed { width: 100%; background: #059669; }
+  .site-progress-fill.failed { width: 100%; background: #dc2626; }
+  @keyframes pp { 0%,100% { opacity: 1; } 50% { opacity: .6; } }
+  .site-meta { font-size: 11px; color: #999; margin-top: 4px; }
+  .expand-arrow { color: #999; font-size: 12px; transition: transform .2s; flex-shrink: 0; }
+  .site-card.expanded .expand-arrow { transform: rotate(90deg); }
+  .site-terminal-wrap { display: none; border-top: 1px solid #eee; }
+  .site-card.expanded .site-terminal-wrap { display: block; }
+  .site-terminal { background: #0d1117; color: #c9d1d9; padding: 14px; font-family: 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 12px; line-height: 1.7; max-height: 300px; overflow-y: auto; }
+  .site-terminal::-webkit-scrollbar { width: 6px; }
+  .site-terminal::-webkit-scrollbar-track { background: transparent; }
+  .site-terminal::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+  .log-line { white-space: pre-wrap; word-break: break-all; }
   .log-line.success { color: #4ade80; }
   .log-line.warning { color: #fbbf24; }
   .log-line.error { color: #f87171; }
-
-  /* 结果列表 */
-  .result-list { margin-top: 16px; }
-  .result-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #f8fafc; border-radius: 8px; margin-bottom: 8px; }
-  .result-item .site-info { flex: 1; }
-  .result-item .site-name { font-weight: 500; }
-  .result-item .site-detail { font-size: 12px; color: #888; margin-top: 2px; }
-  .result-item .result-status { font-size: 12px; padding: 4px 10px; border-radius: 12px; }
-  .result-status.success { background: #d1fae5; color: #047857; }
-  .result-status.warning { background: #fef3c7; color: #b45309; }
-  .result-status.failed { background: #fee2e2; color: #b91c1c; }
-  .result-status.pending { background: #e5e7eb; color: #666; }
-
   .empty-state { text-align: center; padding: 60px; color: #888; }
-  .hidden { display: none; }
 </style>
 </head>
 <body>
-
-<div class="header">
-  <h1>管理员面板</h1>
-</div>
-
+<div class="header"><h1>管理员面板</h1></div>
 <div class="container">
-  <!-- 登录页 -->
   <div id="loginPage" class="login-box">
     <h2>管理员登录</h2>
     <div class="form-group">
@@ -123,47 +136,18 @@
     <button class="btn btn-primary" onclick="doLogin()">登录</button>
     <div class="error-msg" id="loginError"></div>
   </div>
-
-  <!-- 管理面板 -->
   <div id="adminPanel" class="panel">
-    <!-- 批量任务进度面板 -->
-    <div class="task-panel" id="taskPanel">
-      <div class="task-header">
-        <h3>批量爬取任务</h3>
-        <span class="task-status" id="taskStatus">-</span>
-      </div>
-      <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
-      <div class="task-info">
-        <div class="task-info-item"><div class="label">进度</div><div class="value" id="taskProgress">0/0</div></div>
-        <div class="task-info-item"><div class="label">成功</div><div class="value" id="taskSuccess">0</div></div>
-        <div class="task-info-item"><div class="label">警告</div><div class="value" id="taskWarning">0</div></div>
-        <div class="task-info-item"><div class="label">失败</div><div class="value" id="taskFailed">0</div></div>
-      </div>
-      <div class="current-step">
-        <div class="step-label">当前步骤</div>
-        <div class="step-value" id="currentStep">等待中...</div>
-      </div>
-      <div class="current-step">
-        <div class="step-label">当前站点</div>
-        <div class="step-value" id="currentSite">-</div>
-      </div>
-      <h4 style="margin: 16px 0 8px; color: #1e3a5f;">实时日志</h4>
-      <div class="log-panel" id="logPanel"></div>
-      <h4 style="margin: 16px 0 8px; color: #1e3a5f;">爬取结果</h4>
-      <div class="result-list" id="resultList"></div>
-    </div>
-
     <div class="toolbar">
       <h2>网站管理</h2>
       <div class="toolbar-actions">
-        <button class="btn btn-info" id="taskBtn" onclick="toggleTaskPanel()">查看当前任务</button>
+        <button class="btn btn-info" id="taskBtn" onclick="openTaskModal()" style="display:none">
+          <span class="task-dot" id="taskDot"></span>查看爬取任务
+        </button>
         <button class="btn btn-success" onclick="startBatchScrape()">重新爬取昨日数据</button>
         <button class="btn btn-success" onclick="toggleAddForm()">+ 添加网站</button>
         <button class="btn btn-logout" onclick="doLogout()">退出</button>
       </div>
     </div>
-
-    <!-- 添加网站表单 -->
     <div class="add-form" id="addForm">
       <h3>添加新网站</h3>
       <div class="form-row">
@@ -179,9 +163,30 @@
         <button class="btn btn-cancel" onclick="toggleAddForm()">取消</button>
       </div>
     </div>
-
-    <!-- 网站列表 -->
     <div id="siteList"><div class="empty-state">加载中...</div></div>
+  </div>
+</div>
+
+<!-- 任务弹窗 -->
+<div class="modal-overlay" id="taskModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>批量爬取任务</h3>
+      <button class="modal-close" onclick="closeTaskModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="stats-row">
+        <div class="stat-card"><div class="label">总站点</div><div class="value" id="statTotal">0</div></div>
+        <div class="stat-card"><div class="label">已完成</div><div class="value" id="statSuccess" style="color:#059669">0</div></div>
+        <div class="stat-card"><div class="label">进行中</div><div class="value" id="statRunning" style="color:#3b82f6">0</div></div>
+        <div class="stat-card"><div class="label">失败</div><div class="value" id="statFailed" style="color:#dc2626">0</div></div>
+      </div>
+      <div class="overall-progress">
+        <div class="bar"><div class="fill" id="overallFill" style="width:0%"></div></div>
+        <div class="text" id="overallText">0%</div>
+      </div>
+      <div id="siteCards"></div>
+    </div>
   </div>
 </div>
 
@@ -189,19 +194,19 @@
 let adminToken = '';
 let currentTaskId = null;
 let pollTimer = null;
+let lastTaskData = null;
+let expandedSites = new Set();
+
+const STATUS_LABELS = { idle:'等待中', scraping:'爬虫执行中', llm_waiting:'LLM等待中', llm_extracting:'LLM提取中', completed:'已完成', failed:'失败' };
+const STATUS_ICONS = { idle:'⏳', scraping:'🔍', llm_waiting:'⏳', llm_extracting:'🤖', completed:'✅', failed:'❌' };
 
 async function doLogin() {
   const pwd = document.getElementById('passwordInput').value;
   const errEl = document.getElementById('loginError');
   errEl.textContent = '';
   if (!pwd) { errEl.textContent = '请输入密码'; return; }
-
   try {
-    const resp = await fetch('/api/admin/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: pwd })
-    });
+    const resp = await fetch('/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pwd }) });
     if (!resp.ok) { const err = await resp.json(); errEl.textContent = err.detail || '登录失败'; return; }
     const data = await resp.json();
     adminToken = data.token;
@@ -226,36 +231,19 @@ async function loadSites() {
     if (resp.status === 401) { doLogout(); return; }
     const sites = await resp.json();
     renderSites(sites);
-  } catch (e) {
-    document.getElementById('siteList').innerHTML = '<div class="empty-state" style="color:#dc2626">加载失败</div>';
-  }
+  } catch (e) { document.getElementById('siteList').innerHTML = '<div class="empty-state" style="color:#dc2626">加载失败</div>'; }
 }
 
 function renderSites(sites) {
-  if (!sites || sites.length === 0) {
-    document.getElementById('siteList').innerHTML = '<div class="empty-state">暂无网站数据</div>';
-    return;
-  }
+  if (!sites || sites.length === 0) { document.getElementById('siteList').innerHTML = '<div class="empty-state">暂无网站数据</div>'; return; }
   let html = '<table class="site-table"><thead><tr><th>ID</th><th>名称</th><th>网址</th><th>爬虫</th><th>状态</th><th>操作</th></tr></thead><tbody>';
   for (const s of sites) {
     const isHidden = s.hidden;
     const statusClass = isHidden ? 'status-hidden' : 'status-active';
     const statusText = isHidden ? '已隐藏' : '运行中';
     const rowClass = isHidden ? 'hidden-row' : '';
-    const hideBtn = isHidden
-      ? `<button class="btn btn-warning" onclick="unhideSite(${s.id})">显示</button>`
-      : `<button class="btn btn-warning" onclick="hideSite(${s.id})">隐藏</button>`;
-    html += `<tr class="${rowClass}">
-      <td>${s.id}</td>
-      <td><strong>${esc(s.name)}</strong><br><small style="color:#888">${esc(s.description||'')}</small></td>
-      <td><a href="${esc(s.url)}" target="_blank" style="color:#2563eb">${esc(s.url)}</a></td>
-      <td><code>${esc(s.scraper_name||'-')}</code></td>
-      <td><span class="status-badge ${statusClass}">${statusText}</span></td>
-      <td><div class="action-btns">
-        ${hideBtn}
-        <button class="btn btn-danger" onclick="deleteSite(${s.id}, '${esc(s.name)}')">删除</button>
-      </div></td>
-    </tr>`;
+    const hideBtn = isHidden ? `<button class="btn btn-warning" onclick="unhideSite(${s.id})">显示</button>` : `<button class="btn btn-warning" onclick="hideSite(${s.id})">隐藏</button>`;
+    html += `<tr class="${rowClass}"><td>${s.id}</td><td><strong>${esc(s.name)}</strong><br><small style="color:#888">${esc(s.description||'')}</small></td><td><a href="${esc(s.url)}" target="_blank" style="color:#2563eb">${esc(s.url)}</a></td><td><code>${esc(s.scraper_name||'-')}</code></td><td><span class="status-badge ${statusClass}">${statusText}</span></td><td><div class="action-btns">${hideBtn}<button class="btn btn-danger" onclick="deleteSite(${s.id}, '${esc(s.name)}')">删除</button></div></td></tr>`;
   }
   html += '</tbody></table>';
   document.getElementById('siteList').innerHTML = html;
@@ -270,11 +258,7 @@ async function addSite() {
   const desc = document.getElementById('siteDesc').value.trim();
   if (!name || !url) { alert('请填写网站名称和地址'); return; }
   try {
-    const resp = await fetch('/api/admin/sites', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken },
-      body: JSON.stringify({ name, url, scraper_name: scraper || null, description: desc || null })
-    });
+    const resp = await fetch('/api/admin/sites', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken }, body: JSON.stringify({ name, url, scraper_name: scraper || null, description: desc || null }) });
     if (!resp.ok) { const err = await resp.json(); alert(err.detail || '添加失败'); return; }
     toggleAddForm();
     ['siteName','siteUrl','siteScraper','siteDesc'].forEach(id => document.getElementById(id).value = '');
@@ -282,19 +266,8 @@ async function addSite() {
   } catch (e) { alert('网络错误: ' + e.message); }
 }
 
-async function hideSite(id) {
-  try {
-    await fetch(`/api/admin/sites/${id}/hide`, { method: 'POST', headers: { 'X-Admin-Token': adminToken } });
-    loadSites();
-  } catch (e) { alert('操作失败: ' + e.message); }
-}
-
-async function unhideSite(id) {
-  try {
-    await fetch(`/api/admin/sites/${id}/unhide`, { method: 'POST', headers: { 'X-Admin-Token': adminToken } });
-    loadSites();
-  } catch (e) { alert('操作失败: ' + e.message); }
-}
+async function hideSite(id) { try { await fetch(`/api/admin/sites/${id}/hide`, { method: 'POST', headers: { 'X-Admin-Token': adminToken } }); loadSites(); } catch (e) { alert('操作失败'); } }
+async function unhideSite(id) { try { await fetch(`/api/admin/sites/${id}/unhide`, { method: 'POST', headers: { 'X-Admin-Token': adminToken } }); loadSites(); } catch (e) { alert('操作失败'); } }
 
 async function deleteSite(id, name) {
   if (!confirm(`确定要删除网站「${name}」吗？此操作不可恢复！`)) return;
@@ -303,7 +276,7 @@ async function deleteSite(id, name) {
     const resp = await fetch(`/api/admin/sites/${id}`, { method: 'DELETE', headers: { 'X-Admin-Token': adminToken } });
     if (!resp.ok) { const err = await resp.json(); alert(err.detail || '删除失败'); return; }
     loadSites();
-  } catch (e) { alert('网络错误: ' + e.message); }
+  } catch (e) { alert('网络错误'); }
 }
 
 // ============ 批量爬取 ============
@@ -312,31 +285,40 @@ async function checkExistingTask() {
   try {
     const resp = await fetch('/api/admin/batch-scrape/latest', { headers: { 'X-Admin-Token': adminToken } });
     const data = await resp.json();
-    if (data.status === 'running' || data.status === 'completed') {
+    if (data.task_id && data.status !== 'none') {
       currentTaskId = data.task_id;
-      showTaskPanel();
-      updateTaskUI(data);
+      lastTaskData = data;
+      showTaskBtn();
       if (data.status === 'running') startPolling();
     }
   } catch (e) {}
 }
 
+function showTaskBtn() {
+  const btn = document.getElementById('taskBtn');
+  btn.style.display = 'inline-flex';
+  const dot = document.getElementById('taskDot');
+  dot.style.display = lastTaskData && lastTaskData.status === 'running' ? 'inline-block' : 'none';
+}
+
 async function startBatchScrape() {
   if (!confirm('确定要重新爬取所有未隐藏网站的昨日数据吗？')) return;
   try {
-    const resp = await fetch('/api/admin/batch-scrape?mode=yesterday', {
-      method: 'POST', headers: { 'X-Admin-Token': adminToken }
-    });
+    const resp = await fetch('/api/admin/batch-scrape?mode=yesterday', { method: 'POST', headers: { 'X-Admin-Token': adminToken } });
     if (!resp.ok) { const err = await resp.json(); alert(err.detail || '启动失败'); return; }
     const data = await resp.json();
     currentTaskId = data.task_id;
-    showTaskPanel();
+    expandedSites.clear();
     startPolling();
+    openTaskModal();
   } catch (e) { alert('网络错误: ' + e.message); }
 }
 
-function showTaskPanel() { document.getElementById('taskPanel').classList.add('active'); }
-function toggleTaskPanel() { document.getElementById('taskPanel').classList.toggle('active'); }
+function openTaskModal() {
+  document.getElementById('taskModal').classList.add('active');
+  if (lastTaskData) renderTaskUI(lastTaskData);
+}
+function closeTaskModal() { document.getElementById('taskModal').classList.remove('active'); }
 
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
@@ -349,53 +331,91 @@ async function pollTaskStatus() {
     const resp = await fetch(`/api/admin/batch-scrape/${currentTaskId}`, { headers: { 'X-Admin-Token': adminToken } });
     if (resp.status === 401) { doLogout(); return; }
     const data = await resp.json();
-    updateTaskUI(data);
+    lastTaskData = data;
+    showTaskBtn();
+    renderTaskUI(data);
     if (data.status === 'completed' || data.status === 'failed') {
       clearInterval(pollTimer);
       pollTimer = null;
+      showTaskBtn();
     }
   } catch (e) {}
 }
 
-function updateTaskUI(data) {
-  const statusEl = document.getElementById('taskStatus');
-  statusEl.textContent = { pending: '等待中', running: '运行中', completed: '已完成', failed: '失败' }[data.status] || data.status;
-  statusEl.className = 'task-status ' + data.status;
+function renderTaskUI(data) {
+  // 统计
+  const sites = data.sites || [];
+  document.getElementById('statTotal').textContent = data.total_sites || 0;
+  document.getElementById('statSuccess').textContent = data.success_count || 0;
+  document.getElementById('statRunning').textContent = data.running_count || 0;
+  document.getElementById('statFailed').textContent = data.failed_count || 0;
+  document.getElementById('overallFill').style.width = (data.progress_percent || 0) + '%';
+  document.getElementById('overallText').textContent = `${data.completed_sites || 0}/${data.total_sites || 0} (${data.progress_percent || 0}%)`;
 
-  document.getElementById('progressFill').style.width = data.progress_percent + '%';
-  document.getElementById('taskProgress').textContent = `${data.current_index}/${data.total_sites}`;
+  // 站点卡片
+  const container = document.getElementById('siteCards');
+  let html = '';
+  for (const s of sites) {
+    const isExpanded = expandedSites.has(s.site_id);
+    const status = s.status || 'idle';
+    const label = STATUS_LABELS[status] || status;
+    const icon = STATUS_ICONS[status] || '⏳';
+    const meta = status === 'completed' ? `${s.rows} 条 → 提取 ${s.extracted_rows} 条 | ${s.duration}s`
+      : status === 'failed' ? (s.error || '失败')
+      : status === 'scraping' ? `爬取中...`
+      : status === 'llm_extracting' ? `已爬取 ${s.rows} 条，提取中...`
+      : status === 'llm_waiting' ? `已爬取 ${s.rows} 条，等待LLM`
+      : '';
 
-  const success = (data.results || []).filter(r => r.status === 'success').length;
-  const warning = (data.results || []).filter(r => r.status === 'warning').length;
-  const failed = (data.results || []).filter(r => r.status === 'failed').length;
-  document.getElementById('taskSuccess').textContent = success;
-  document.getElementById('taskWarning').textContent = warning;
-  document.getElementById('taskFailed').textContent = failed;
-
-  const stepMap = { scraping: '正在爬取数据...', llm_validation: 'LLM 数据质量验证中...', completed: '任务完成' };
-  document.getElementById('currentStep').textContent = stepMap[data.current_step] || '等待中...';
-  document.getElementById('currentSite').textContent = data.current_site || '-';
-
-  // 日志
-  const logPanel = document.getElementById('logPanel');
-  logPanel.innerHTML = (data.logs || []).map(l => `<div class="log-line">${esc(l)}</div>`).join('');
-  logPanel.scrollTop = logPanel.scrollHeight;
-
-  // 结果列表
-  const resultList = document.getElementById('resultList');
-  resultList.innerHTML = (data.results || []).map(r => {
-    const statusMap = { success: '成功', warning: '警告', failed: '失败', pending: '等待中' };
-    const detail = r.status === 'success' ? `${r.rows} 条数据`
-      : r.status === 'warning' ? (r.llm_reason || '-')
-      : (r.error || '-');
-    return `<div class="result-item">
-      <div class="site-info">
-        <div class="site-name">${esc(r.site_name)}</div>
-        <div class="site-detail">${esc(detail)} | ${r.duration ? r.duration.toFixed(1) + 's' : '-'}</div>
+    html += `<div class="site-card ${isExpanded ? 'expanded' : ''}" id="card-${s.site_id}">
+      <div class="site-card-header" onclick="toggleSiteCard(${s.site_id})">
+        <div class="site-icon ${status}">${icon}</div>
+        <div class="site-info">
+          <div class="site-name-row">
+            <span class="name">${esc(s.site_name)}</span>
+            <span class="status-tag ${status}">${label}</span>
+          </div>
+          <div class="site-progress-row">
+            <div class="site-progress-bar"><div class="site-progress-fill ${status}"></div></div>
+          </div>
+          <div class="site-meta">${esc(meta)}</div>
+        </div>
+        <span class="expand-arrow">▶</span>
       </div>
-      <span class="result-status ${r.status}">${statusMap[r.status] || r.status}</span>
+      <div class="site-terminal-wrap">
+        <div class="site-terminal" id="terminal-${s.site_id}">
+          ${(s.logs || []).map(l => `<div class="log-line${logClass(l)}">${esc(l)}</div>`).join('')}
+        </div>
+      </div>
     </div>`;
-  }).join('');
+  }
+  container.innerHTML = html;
+
+  // 滚动展开的终端到底部
+  for (const sid of expandedSites) {
+    const el = document.getElementById('terminal-' + sid);
+    if (el) el.scrollTop = el.scrollHeight;
+  }
+}
+
+function toggleSiteCard(siteId) {
+  if (expandedSites.has(siteId)) {
+    expandedSites.delete(siteId);
+  } else {
+    expandedSites.add(siteId);
+  }
+  const card = document.getElementById('card-' + siteId);
+  if (card) card.classList.toggle('expanded');
+  // 滚动终端到底部
+  const el = document.getElementById('terminal-' + siteId);
+  if (el) setTimeout(() => el.scrollTop = el.scrollHeight, 50);
+}
+
+function logClass(line) {
+  if (line.includes('✓') || line.includes('成功') || line.includes('✅') || line.includes('完成')) return ' success';
+  if (line.includes('⚠') || line.includes('警告')) return ' warning';
+  if (line.includes('✗') || line.includes('失败') || line.includes('错误') || line.includes('❌')) return ' error';
+  return '';
 }
 
 function esc(s) {
@@ -404,6 +424,10 @@ function esc(s) {
   d.textContent = s;
   return d.innerHTML;
 }
+
+document.getElementById('taskModal').addEventListener('click', function(e) {
+  if (e.target === this) closeTaskModal();
+});
 </script>
 </body>
 </html>
