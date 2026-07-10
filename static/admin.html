@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理员面板</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; background: #f0f2f5; color: #333; min-height: 100vh; }
+  .header { background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); color: #fff; padding: 30px 20px; text-align: center; }
+  .header h1 { font-size: 24px; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 30px 20px; }
+
+  /* 登录框 */
+  .login-box { max-width: 400px; margin: 80px auto; background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.1); }
+  .login-box h2 { text-align: center; margin-bottom: 24px; color: #1e3a5f; }
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; margin-bottom: 6px; font-size: 14px; color: #555; }
+  .form-group input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
+  .form-group input:focus { outline: none; border-color: #1e3a5f; }
+  .btn { padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; transition: all .2s; }
+  .btn-primary { background: #1e3a5f; color: #fff; width: 100%; padding: 12px; }
+  .btn-primary:hover { background: #2d5a87; }
+  .btn-danger { background: #dc2626; color: #fff; padding: 6px 12px; font-size: 12px; }
+  .btn-danger:hover { background: #b91c1c; }
+  .btn-warning { background: #f59e0b; color: #fff; padding: 6px 12px; font-size: 12px; }
+  .btn-warning:hover { background: #d97706; }
+  .btn-success { background: #059669; color: #fff; }
+  .btn-success:hover { background: #047857; }
+  .btn-info { background: #3b82f6; color: #fff; }
+  .btn-info:hover { background: #2563eb; }
+  .btn-logout { background: #6b7280; color: #fff; }
+  .btn-logout:hover { background: #4b5563; }
+  .btn-cancel { background: #e5e7eb; color: #333; }
+  .error-msg { color: #dc2626; font-size: 13px; margin-top: 8px; text-align: center; }
+
+  /* 管理面板 */
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
+  .toolbar h2 { font-size: 18px; color: #1e3a5f; }
+  .toolbar-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  /* 网站列表 */
+  .site-table { width: 100%; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .site-table th { background: #f8fafc; padding: 12px 14px; text-align: left; font-size: 13px; color: #666; border-bottom: 1px solid #eee; }
+  .site-table td { padding: 12px 14px; font-size: 14px; border-bottom: 1px solid #f0f0f0; }
+  .site-table tr:last-child td { border-bottom: none; }
+  .site-table tr:hover { background: #fafbfc; }
+  .site-table tr.hidden-row { opacity: 0.5; }
+  .status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; }
+  .status-active { background: #d1fae5; color: #047857; }
+  .status-hidden { background: #fee2e2; color: #b91c1c; }
+  .action-btns { display: flex; gap: 6px; }
+
+  /* 添加网站表单 */
+  .add-form { background: #fff; padding: 24px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.06); display: none; }
+  .add-form.active { display: block; }
+  .add-form h3 { margin-bottom: 16px; color: #1e3a5f; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-actions { margin-top: 16px; display: flex; gap: 10px; }
+
+  /* 批量任务进度面板 */
+  .task-panel { background: #fff; border-radius: 10px; padding: 24px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.06); display: none; }
+  .task-panel.active { display: block; }
+  .task-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .task-header h3 { color: #1e3a5f; }
+  .task-status { font-size: 14px; padding: 4px 12px; border-radius: 16px; }
+  .task-status.running { background: #dbeafe; color: #1d4ed8; }
+  .task-status.completed { background: #d1fae5; color: #047857; }
+  .task-status.pending { background: #fef3c7; color: #b45309; }
+  .task-status.failed { background: #fee2e2; color: #b91c1c; }
+
+  .progress-bar { height: 8px; background: #e5e7eb; border-radius: 4px; overflow: hidden; margin-bottom: 12px; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #1e3a5f); transition: width 0.3s; }
+
+  .task-info { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 16px; }
+  .task-info-item { text-align: center; }
+  .task-info-item .label { font-size: 12px; color: #888; }
+  .task-info-item .value { font-size: 18px; font-weight: 600; color: #1e3a5f; }
+
+  .current-step { background: #f8fafc; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; }
+  .current-step .step-label { font-size: 12px; color: #888; }
+  .current-step .step-value { font-size: 14px; color: #333; margin-top: 4px; }
+
+  /* 日志面板 */
+  .log-panel { background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 8px; font-family: 'Monaco', 'Menlo', monospace; font-size: 12px; max-height: 300px; overflow-y: auto; }
+  .log-line { margin-bottom: 4px; line-height: 1.5; }
+  .log-line.success { color: #4ade80; }
+  .log-line.warning { color: #fbbf24; }
+  .log-line.error { color: #f87171; }
+
+  /* 结果列表 */
+  .result-list { margin-top: 16px; }
+  .result-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #f8fafc; border-radius: 8px; margin-bottom: 8px; }
+  .result-item .site-info { flex: 1; }
+  .result-item .site-name { font-weight: 500; }
+  .result-item .site-detail { font-size: 12px; color: #888; margin-top: 2px; }
+  .result-item .result-status { font-size: 12px; padding: 4px 10px; border-radius: 12px; }
+  .result-status.success { background: #d1fae5; color: #047857; }
+  .result-status.warning { background: #fef3c7; color: #b45309; }
+  .result-status.failed { background: #fee2e2; color: #b91c1c; }
+  .result-status.pending { background: #e5e7eb; color: #666; }
+
+  .empty-state { text-align: center; padding: 60px; color: #888; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>管理员面板</h1>
+</div>
+
+<div class="container">
+  <!-- 登录页 -->
+  <div id="loginPage" class="login-box">
+    <h2>管理员登录</h2>
+    <div class="form-group">
+      <label>密码</label>
+      <input type="password" id="passwordInput" placeholder="请输入管理员密码" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn btn-primary" onclick="doLogin()">登录</button>
+    <div class="error-msg" id="loginError"></div>
+  </div>
+
+  <!-- 管理面板 -->
+  <div id="adminPanel" class="panel">
+    <!-- 批量任务进度面板 -->
+    <div class="task-panel" id="taskPanel">
+      <div class="task-header">
+        <h3>批量爬取任务</h3>
+        <span class="task-status" id="taskStatus">-</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+      <div class="task-info">
+        <div class="task-info-item"><div class="label">进度</div><div class="value" id="taskProgress">0/0</div></div>
+        <div class="task-info-item"><div class="label">成功</div><div class="value" id="taskSuccess">0</div></div>
+        <div class="task-info-item"><div class="label">警告</div><div class="value" id="taskWarning">0</div></div>
+        <div class="task-info-item"><div class="label">失败</div><div class="value" id="taskFailed">0</div></div>
+      </div>
+      <div class="current-step">
+        <div class="step-label">当前步骤</div>
+        <div class="step-value" id="currentStep">等待中...</div>
+      </div>
+      <div class="current-step">
+        <div class="step-label">当前站点</div>
+        <div class="step-value" id="currentSite">-</div>
+      </div>
+      <h4 style="margin: 16px 0 8px; color: #1e3a5f;">实时日志</h4>
+      <div class="log-panel" id="logPanel"></div>
+      <h4 style="margin: 16px 0 8px; color: #1e3a5f;">爬取结果</h4>
+      <div class="result-list" id="resultList"></div>
+    </div>
+
+    <div class="toolbar">
+      <h2>网站管理</h2>
+      <div class="toolbar-actions">
+        <button class="btn btn-info" id="taskBtn" onclick="toggleTaskPanel()">查看当前任务</button>
+        <button class="btn btn-success" onclick="startBatchScrape()">重新爬取昨日数据</button>
+        <button class="btn btn-success" onclick="toggleAddForm()">+ 添加网站</button>
+        <button class="btn btn-logout" onclick="doLogout()">退出</button>
+      </div>
+    </div>
+
+    <!-- 添加网站表单 -->
+    <div class="add-form" id="addForm">
+      <h3>添加新网站</h3>
+      <div class="form-row">
+        <div class="form-group"><label>网站名称 *</label><input type="text" id="siteName" placeholder="如：中国农业银行"></div>
+        <div class="form-group"><label>网站地址 *</label><input type="text" id="siteUrl" placeholder="https://example.com"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>爬虫名称（可选）</label><input type="text" id="siteScraper" placeholder="留空自动推导"></div>
+        <div class="form-group"><label>描述（可选）</label><input type="text" id="siteDesc" placeholder="网站描述"></div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-success" onclick="addSite()">确认添加</button>
+        <button class="btn btn-cancel" onclick="toggleAddForm()">取消</button>
+      </div>
+    </div>
+
+    <!-- 网站列表 -->
+    <div id="siteList"><div class="empty-state">加载中...</div></div>
+  </div>
+</div>
+
+<script>
+let adminToken = '';
+let currentTaskId = null;
+let pollTimer = null;
+
+async function doLogin() {
+  const pwd = document.getElementById('passwordInput').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  if (!pwd) { errEl.textContent = '请输入密码'; return; }
+
+  try {
+    const resp = await fetch('/api/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pwd })
+    });
+    if (!resp.ok) { const err = await resp.json(); errEl.textContent = err.detail || '登录失败'; return; }
+    const data = await resp.json();
+    adminToken = data.token;
+    document.getElementById('loginPage').style.display = 'none';
+    document.getElementById('adminPanel').classList.add('active');
+    loadSites();
+    checkExistingTask();
+  } catch (e) { errEl.textContent = '网络错误: ' + e.message; }
+}
+
+function doLogout() {
+  adminToken = '';
+  if (pollTimer) clearInterval(pollTimer);
+  document.getElementById('adminPanel').classList.remove('active');
+  document.getElementById('loginPage').style.display = 'block';
+  document.getElementById('passwordInput').value = '';
+}
+
+async function loadSites() {
+  try {
+    const resp = await fetch('/api/admin/sites', { headers: { 'X-Admin-Token': adminToken } });
+    if (resp.status === 401) { doLogout(); return; }
+    const sites = await resp.json();
+    renderSites(sites);
+  } catch (e) {
+    document.getElementById('siteList').innerHTML = '<div class="empty-state" style="color:#dc2626">加载失败</div>';
+  }
+}
+
+function renderSites(sites) {
+  if (!sites || sites.length === 0) {
+    document.getElementById('siteList').innerHTML = '<div class="empty-state">暂无网站数据</div>';
+    return;
+  }
+  let html = '<table class="site-table"><thead><tr><th>ID</th><th>名称</th><th>网址</th><th>爬虫</th><th>状态</th><th>操作</th></tr></thead><tbody>';
+  for (const s of sites) {
+    const isHidden = s.hidden;
+    const statusClass = isHidden ? 'status-hidden' : 'status-active';
+    const statusText = isHidden ? '已隐藏' : '运行中';
+    const rowClass = isHidden ? 'hidden-row' : '';
+    const hideBtn = isHidden
+      ? `<button class="btn btn-warning" onclick="unhideSite(${s.id})">显示</button>`
+      : `<button class="btn btn-warning" onclick="hideSite(${s.id})">隐藏</button>`;
+    html += `<tr class="${rowClass}">
+      <td>${s.id}</td>
+      <td><strong>${esc(s.name)}</strong><br><small style="color:#888">${esc(s.description||'')}</small></td>
+      <td><a href="${esc(s.url)}" target="_blank" style="color:#2563eb">${esc(s.url)}</a></td>
+      <td><code>${esc(s.scraper_name||'-')}</code></td>
+      <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+      <td><div class="action-btns">
+        ${hideBtn}
+        <button class="btn btn-danger" onclick="deleteSite(${s.id}, '${esc(s.name)}')">删除</button>
+      </div></td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  document.getElementById('siteList').innerHTML = html;
+}
+
+function toggleAddForm() { document.getElementById('addForm').classList.toggle('active'); }
+
+async function addSite() {
+  const name = document.getElementById('siteName').value.trim();
+  const url = document.getElementById('siteUrl').value.trim();
+  const scraper = document.getElementById('siteScraper').value.trim();
+  const desc = document.getElementById('siteDesc').value.trim();
+  if (!name || !url) { alert('请填写网站名称和地址'); return; }
+  try {
+    const resp = await fetch('/api/admin/sites', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken },
+      body: JSON.stringify({ name, url, scraper_name: scraper || null, description: desc || null })
+    });
+    if (!resp.ok) { const err = await resp.json(); alert(err.detail || '添加失败'); return; }
+    toggleAddForm();
+    ['siteName','siteUrl','siteScraper','siteDesc'].forEach(id => document.getElementById(id).value = '');
+    loadSites();
+  } catch (e) { alert('网络错误: ' + e.message); }
+}
+
+async function hideSite(id) {
+  try {
+    await fetch(`/api/admin/sites/${id}/hide`, { method: 'POST', headers: { 'X-Admin-Token': adminToken } });
+    loadSites();
+  } catch (e) { alert('操作失败: ' + e.message); }
+}
+
+async function unhideSite(id) {
+  try {
+    await fetch(`/api/admin/sites/${id}/unhide`, { method: 'POST', headers: { 'X-Admin-Token': adminToken } });
+    loadSites();
+  } catch (e) { alert('操作失败: ' + e.message); }
+}
+
+async function deleteSite(id, name) {
+  if (!confirm(`确定要删除网站「${name}」吗？此操作不可恢复！`)) return;
+  if (!confirm(`再次确认：删除「${name}」？`)) return;
+  try {
+    const resp = await fetch(`/api/admin/sites/${id}`, { method: 'DELETE', headers: { 'X-Admin-Token': adminToken } });
+    if (!resp.ok) { const err = await resp.json(); alert(err.detail || '删除失败'); return; }
+    loadSites();
+  } catch (e) { alert('网络错误: ' + e.message); }
+}
+
+// ============ 批量爬取 ============
+
+async function checkExistingTask() {
+  try {
+    const resp = await fetch('/api/admin/batch-scrape/latest', { headers: { 'X-Admin-Token': adminToken } });
+    const data = await resp.json();
+    if (data.status === 'running' || data.status === 'completed') {
+      currentTaskId = data.task_id;
+      showTaskPanel();
+      updateTaskUI(data);
+      if (data.status === 'running') startPolling();
+    }
+  } catch (e) {}
+}
+
+async function startBatchScrape() {
+  if (!confirm('确定要重新爬取所有未隐藏网站的昨日数据吗？')) return;
+  try {
+    const resp = await fetch('/api/admin/batch-scrape?mode=yesterday', {
+      method: 'POST', headers: { 'X-Admin-Token': adminToken }
+    });
+    if (!resp.ok) { const err = await resp.json(); alert(err.detail || '启动失败'); return; }
+    const data = await resp.json();
+    currentTaskId = data.task_id;
+    showTaskPanel();
+    startPolling();
+  } catch (e) { alert('网络错误: ' + e.message); }
+}
+
+function showTaskPanel() { document.getElementById('taskPanel').classList.add('active'); }
+function toggleTaskPanel() { document.getElementById('taskPanel').classList.toggle('active'); }
+
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(pollTaskStatus, 2000);
+}
+
+async function pollTaskStatus() {
+  if (!currentTaskId) return;
+  try {
+    const resp = await fetch(`/api/admin/batch-scrape/${currentTaskId}`, { headers: { 'X-Admin-Token': adminToken } });
+    if (resp.status === 401) { doLogout(); return; }
+    const data = await resp.json();
+    updateTaskUI(data);
+    if (data.status === 'completed' || data.status === 'failed') {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  } catch (e) {}
+}
+
+function updateTaskUI(data) {
+  const statusEl = document.getElementById('taskStatus');
+  statusEl.textContent = { pending: '等待中', running: '运行中', completed: '已完成', failed: '失败' }[data.status] || data.status;
+  statusEl.className = 'task-status ' + data.status;
+
+  document.getElementById('progressFill').style.width = data.progress_percent + '%';
+  document.getElementById('taskProgress').textContent = `${data.current_index}/${data.total_sites}`;
+
+  const success = (data.results || []).filter(r => r.status === 'success').length;
+  const warning = (data.results || []).filter(r => r.status === 'warning').length;
+  const failed = (data.results || []).filter(r => r.status === 'failed').length;
+  document.getElementById('taskSuccess').textContent = success;
+  document.getElementById('taskWarning').textContent = warning;
+  document.getElementById('taskFailed').textContent = failed;
+
+  const stepMap = { scraping: '正在爬取数据...', llm_validation: 'LLM 数据质量验证中...', completed: '任务完成' };
+  document.getElementById('currentStep').textContent = stepMap[data.current_step] || '等待中...';
+  document.getElementById('currentSite').textContent = data.current_site || '-';
+
+  // 日志
+  const logPanel = document.getElementById('logPanel');
+  logPanel.innerHTML = (data.logs || []).map(l => `<div class="log-line">${esc(l)}</div>`).join('');
+  logPanel.scrollTop = logPanel.scrollHeight;
+
+  // 结果列表
+  const resultList = document.getElementById('resultList');
+  resultList.innerHTML = (data.results || []).map(r => {
+    const statusMap = { success: '成功', warning: '警告', failed: '失败', pending: '等待中' };
+    const detail = r.status === 'success' ? `${r.rows} 条数据`
+      : r.status === 'warning' ? (r.llm_reason || '-')
+      : (r.error || '-');
+    return `<div class="result-item">
+      <div class="site-info">
+        <div class="site-name">${esc(r.site_name)}</div>
+        <div class="site-detail">${esc(detail)} | ${r.duration ? r.duration.toFixed(1) + 's' : '-'}</div>
+      </div>
+      <span class="result-status ${r.status}">${statusMap[r.status] || r.status}</span>
+    </div>`;
+  }).join('');
+}
+
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+</script>
+</body>
+</html>
