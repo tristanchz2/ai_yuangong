@@ -78,7 +78,7 @@ class ExtractedFields(BaseModel):
     )
     keywords: Optional[List[str]] = Field(
         default=None,
-        description="关键词，不超过4个，每个关键词是一个简短词语"
+        description="关键词，2个左右，最多不超过4个。要求：不要包含地区/省份（如北京、江苏）、产品类别（如服务类、工程类）等重复信息，每个关键词应是具体的业务关键词"
     )
     budget: Optional[float] = Field(
         default=None,
@@ -492,23 +492,55 @@ async def async_main():
 
     elapsed = time.time() - start_time
 
-    # 保存结果
-    output_name = args.output or "extracted_all.json"
-    output_path = OUTPUT_DIR / output_name
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "extractedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "totalRecords": len(all_results),
-                "records": all_results,
-            },
-            f,
-            ensure_ascii=False,
-            indent=2,
-        )
+    # 按 notice_type 分组保存到不同文件夹
+    folders = {
+        "采购公告": OUTPUT_DIR / "采购公告",
+        "结果公告": OUTPUT_DIR / "结果公告",
+        "其他": OUTPUT_DIR / "其他",
+    }
+    for folder in folders.values():
+        folder.mkdir(parents=True, exist_ok=True)
 
-    print(f"\n✅ 提取完成！共 {len(all_results)} 条记录")
-    print(f"📄 输出文件: {output_path}")
+    # 按类型分组
+    grouped = {"采购公告": [], "结果公告": [], "其他": []}
+    for r in all_results:
+        nt = r.get("notice_type", "其他")
+        if nt not in grouped:
+            nt = "其他"
+        grouped[nt].append(r)
+
+    # 保存到对应文件夹，文件名用时间戳，不覆盖已有文件
+    saved_count = 0
+    for notice_type, records in grouped.items():
+        if not records:
+            continue
+        folder = folders[notice_type]
+        ts = int(time.time() * 1000)
+        filename = f"{ts}.json"
+        output_path = folder / filename
+        # 如果文件已存在，加序号避免覆盖
+        counter = 1
+        while output_path.exists():
+            filename = f"{ts}_{counter}.json"
+            output_path = folder / filename
+            counter += 1
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "extractedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "noticeType": notice_type,
+                    "totalRecords": len(records),
+                    "records": records,
+                },
+                f,
+                ensure_ascii=False,
+                indent=2,
+            )
+        saved_count += len(records)
+        print(f"  📁 {notice_type}: {len(records)} 条 -> {output_path.name}")
+
+    print(f"\n✅ 提取完成！共 {saved_count} 条记录")
+    print(f"📂 输出目录: {OUTPUT_DIR}")
     print(f"⏱️  耗时: {elapsed:.1f}s")
 
 

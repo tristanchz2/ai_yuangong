@@ -22,13 +22,20 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 app = FastAPI(title="爬虫生成服务")
 
 # 项目根目录
 PROJECT_ROOT = Path(__file__).parent
+STATIC_DIR = PROJECT_ROOT / "static"
+EXTRACTED_DATA_DIR = PROJECT_ROOT / "extracted_data"
 SCRAPERS_DIR = PROJECT_ROOT / "scrapers"
+
+# 数据分类
+DATA_CATEGORIES = ["采购公告", "结果公告", "其他"]
 
 # 加载 .env
 def _load_env():
@@ -489,20 +496,68 @@ async def get_logs(task_id: str):
     }
 
 
+@app.get("/api/categories")
+async def get_categories():
+    """返回所有数据分类及其记录数"""
+    categories = []
+    for cat in DATA_CATEGORIES:
+        cat_dir = EXTRACTED_DATA_DIR / cat
+        if cat_dir.exists() and cat_dir.is_dir():
+            json_files = list(cat_dir.glob("*.json"))
+            total_records = 0
+            latest_time = None
+            for jf in json_files:
+                try:
+                    with open(jf, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        total_records += data.get("totalRecords", 0)
+                        ext_time = data.get("extractedAt")
+                        if ext_time and (not latest_time or ext_time > latest_time):
+                            latest_time = ext_time
+                except:
+                    pass
+            categories.append({
+                "name": cat,
+                "fileCount": len(json_files),
+                "totalRecords": total_records,
+                "latestExtractedAt": latest_time
+            })
+    return {"categories": categories}
+
+
+@app.get("/api/data/{category}")
+async def get_category_data(category: str):
+    """读取指定分类的所有 JSON 数据"""
+    if category not in DATA_CATEGORIES:
+        raise HTTPException(status_code=404, detail=f"分类不存在: {category}")
+    cat_dir = EXTRACTED_DATA_DIR / category
+    if not cat_dir.exists():
+        raise HTTPException(status_code=404, detail="分类目录不存在")
+    
+    all_records = []
+    for jf in sorted(cat_dir.glob("*.json")):
+        try:
+            with open(jf, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                records = data.get("records", [])
+                all_records.extend(records)
+        except:
+            pass
+    
+    return {
+        "category": category,
+        "totalRecords": len(all_records),
+        "records": all_records
+    }
+
+
 @app.get("/")
 async def root():
-    """API 说明"""
-    return {
-        'service': '爬虫生成服务',
-        'endpoints': {
-            'POST /generate': '生成爬虫。Body: {"url": "https://...", "name": "optional"}',
-            'GET /status/{task_id}': '查询任务状态',
-            'GET /status': '列出所有任务',
-        },
-        'example': {
-            'curl': 'curl -X POST http://localhost:8000/generate -H "Content-Type: application/json" -d \'{"url": "https://example.com"}\'',
-        }
-    }
+    """前端页面"""
+    index_path = STATIC_DIR / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="前端页面不存在")
+    return FileResponse(index_path, media_type="text/html")
 
 
 if __name__ == "__main__":
