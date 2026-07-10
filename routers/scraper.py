@@ -22,6 +22,7 @@ MAX_GENERATE_TASKS = 5  # 保留最近5个爬虫生成任务
 class GenerateRequest(BaseModel):
     url: str
     name: Optional[str] = None
+    reference_urls: Optional[list[str]] = None
 
 
 class GenerateResponse(BaseModel):
@@ -142,7 +143,7 @@ def fallback_quality_check(data: Dict[str, Any]) -> tuple:
     return True, "基础检查通过"
 
 
-async def run_hermes_generate(task_id: str, url: str, custom_name: Optional[str] = None):
+async def run_hermes_generate(task_id: str, url: str, custom_name: Optional[str] = None, reference_urls: Optional[list[str]] = None):
     """后台任务：调用 Hermes 生成爬虫"""
     task = tasks[task_id]
     task['status'] = 'running'
@@ -165,8 +166,15 @@ async def run_hermes_generate(task_id: str, url: str, custom_name: Optional[str]
             task['duration'] = task['finished_at'] - task['started_at']
             return
 
-        prompt = f"帮我爬这个网站：{url}，爬虫名称用 {scraper_name}"
-        cmd = ['hermes', 'chat', '-q', prompt, '-s', 'gen-scraper']
+        # 拼接 prompt
+        prompt = f"帮我爬这个网站：{url}，爬虫名称用 {scraper_name}。不要问我任何问题，所有决策你自己做，遇到错误自己修复。"
+        
+        # 如果有参考 URL，加到 prompt 里
+        if reference_urls and len(reference_urls) > 0:
+            refs_text = "\n".join([f"- {ref_url}" for ref_url in reference_urls])
+            prompt += f"\n\n参考以下详情页 URL，学习页面结构和选择器：\n{refs_text}\n\n优先从这些参考页面分析 HTML 结构和数据提取规则。"
+        
+        cmd = ['hermes', 'chat', '-q', prompt, '-s', 'gen-scraper', '--yolo']
 
         process = await asyncio.create_subprocess_exec(
             *cmd,
@@ -354,7 +362,7 @@ async def generate_scraper(req: GenerateRequest):
         'created_at': time.time(),
     }
 
-    asyncio.create_task(run_hermes_generate(task_id, clean_url, req.name))
+    asyncio.create_task(run_hermes_generate(task_id, clean_url, req.name, req.reference_urls))
 
     return GenerateResponse(
         task_id=task_id,

@@ -98,6 +98,15 @@
       "description": "渤海银行",
       "status": "active",
       "hidden": false
+    },
+    {
+      "id": 12,
+      "name": "平安银行慧采系统",
+      "url": "https://ebank.pingan.com.cn/cr/eps-sppt-portal/index.html#/login",
+      "scraper_name": "pingan",
+      "description": "",
+      "status": "active",
+      "hidden": false
     }
   ]
 }

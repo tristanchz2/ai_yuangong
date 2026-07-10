@@ -59,6 +59,7 @@ class SiteCreate(BaseModel):
     url: str
     scraper_name: Optional[str] = None
     description: Optional[str] = None
+    reference_urls: Optional[list[str]] = None
 
 
 # ============ 登录 ============
@@ -112,13 +113,14 @@ async def add_site(site: SiteCreate, _=Depends(verify_admin_token)):
         'status': 'pending',
         'url': site.url,
         'scraper_name': scraper_name,
+        'reference_urls': site.reference_urls or [],
         'created_at': time.time(),
     }
     
     # 后台运行爬虫生成，失败时回滚
     async def generate_with_rollback():
         try:
-            await run_hermes_generate(task_id, site.url, scraper_name)
+            await run_hermes_generate(task_id, site.url, scraper_name, site.reference_urls)
             # 检查是否成功
             task = generate_tasks.get(task_id)
             if task and task.get('status') != 'success':

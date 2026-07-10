@@ -186,6 +186,11 @@
         <div class="form-group"><label>爬虫名称（可选）</label><input type="text" id="siteScraper" placeholder="留空自动推导"></div>
         <div class="form-group"><label>描述（可选）</label><input type="text" id="siteDesc" placeholder="网站描述"></div>
       </div>
+      <div class="form-group">
+        <label>参考 URL（可选，用于学习页面结构）</label>
+        <div id="refUrlsContainer" style="margin-bottom: 8px;"></div>
+        <button type="button" class="btn btn-info" onclick="addRefUrlField()" style="padding: 6px 12px; font-size: 12px;">+ 添加参考URL</button>
+      </div>
       <div class="form-actions">
         <button class="btn btn-success" onclick="addSite()">确认添加</button>
         <button class="btn btn-cancel" onclick="toggleAddForm()">取消</button>
@@ -297,16 +302,67 @@ function renderSites(sites) {
   document.getElementById('siteList').innerHTML = html;
 }
 
-function toggleAddForm() { document.getElementById('addForm').classList.toggle('active'); }
+function toggleAddForm() { 
+  const form = document.getElementById('addForm');
+  form.classList.toggle('active');
+  if (form.classList.contains('active')) {
+    // 表单打开时，初始化一个空的参考URL输入框
+    const container = document.getElementById('refUrlsContainer');
+    container.innerHTML = '';
+    addRefUrlField();
+  }
+}
+
+function addRefUrlField() {
+  const container = document.getElementById('refUrlsContainer');
+  const index = container.children.length;
+  const div = document.createElement('div');
+  div.className = 'ref-url-item';
+  div.style.display = 'flex';
+  div.style.gap = '8px';
+  div.style.marginBottom = '8px';
+  div.innerHTML = `
+    <input type="text" class="ref-url-input" placeholder="https://example.com/detail/${index + 1}" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+    <button type="button" class="btn btn-danger" onclick="removeRefUrlField(this)" style="padding: 6px 12px; font-size: 12px;">✕</button>
+  `;
+  container.appendChild(div);
+}
+
+function removeRefUrlField(button) {
+  const container = document.getElementById('refUrlsContainer');
+  if (container.children.length > 1) {
+    button.parentElement.remove();
+  } else {
+    alert('至少保留一个参考URL输入框');
+  }
+}
 
 async function addSite() {
   const name = document.getElementById('siteName').value.trim();
   const url = document.getElementById('siteUrl').value.trim();
   const scraper = document.getElementById('siteScraper').value.trim();
   const desc = document.getElementById('siteDesc').value.trim();
+  
   if (!name || !url) { alert('请填写网站名称和地址'); return; }
+  
+  // 收集所有非空的参考URL输入框的值
+  const refUrlInputs = document.querySelectorAll('.ref-url-input');
+  const reference_urls = Array.from(refUrlInputs)
+    .map(input => input.value.trim())
+    .filter(url => url.length > 0);
+  
   try {
-    const resp = await fetch('/api/admin/sites', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken }, body: JSON.stringify({ name, url, scraper_name: scraper || null, description: desc || null }) });
+    const resp = await fetch('/api/admin/sites', { 
+      method: 'POST', 
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken }, 
+      body: JSON.stringify({ 
+        name, 
+        url, 
+        scraper_name: scraper || null, 
+        description: desc || null,
+        reference_urls: reference_urls.length > 0 ? reference_urls : null
+      }) 
+    });
     if (!resp.ok) { const err = await resp.json(); alert(err.detail || '添加失败'); return; }
     const result = await resp.json();
     alert(result.message || '网站已添加，爬虫正在生成');

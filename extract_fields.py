@@ -367,6 +367,7 @@ async def extract_batch(
                     ],
                     response_format={"type": "json_object"},
                     temperature=0,
+                    extra_body={"enable_thinking": False},
                 )
 
                 result_text = response.choices[0].message.content
