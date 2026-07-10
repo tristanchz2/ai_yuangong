@@ -88,6 +88,7 @@
   .site-icon.llm_extracting { background: #ede9fe; }
   .site-icon.completed { background: #d1fae5; }
   .site-icon.failed { background: #fee2e2; }
+  .site-icon.cancelled { background: #fee2e2; }
   .site-info { flex: 1; min-width: 0; }
   .site-name-row { display: flex; align-items: center; gap: 8px; }
   .site-name-row .name { font-weight: 600; font-size: 14px; color: #1e3a5f; }
@@ -98,6 +99,7 @@
   .status-tag.llm_extracting { background: #ede9fe; color: #6d28d9; }
   .status-tag.completed { background: #d1fae5; color: #047857; }
   .status-tag.failed { background: #fee2e2; color: #b91c1c; }
+  .status-tag.cancelled { background: #fee2e2; color: #b91c1c; }
   .site-progress-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
   .site-progress-bar { flex: 1; height: 4px; background: #e5e7eb; border-radius: 2px; overflow: hidden; }
   .site-progress-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
@@ -107,6 +109,7 @@
   .site-progress-fill.llm_extracting { width: 75%; background: #8b5cf6; animation: pp 1.5s infinite; }
   .site-progress-fill.completed { width: 100%; background: #059669; }
   .site-progress-fill.failed { width: 100%; background: #dc2626; }
+  .site-progress-fill.cancelled { width: 100%; background: #f59e0b; }
   @keyframes pp { 0%,100% { opacity: 1; } 50% { opacity: .6; } }
   .site-meta { font-size: 11px; color: #999; margin-top: 4px; }
   .expand-arrow { color: #999; font-size: 12px; transition: transform .2s; flex-shrink: 0; }
@@ -172,7 +175,10 @@
   <div class="modal">
     <div class="modal-header">
       <h3>批量爬取任务</h3>
-      <button class="modal-close" onclick="closeTaskModal()">✕</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-danger" id="cancelTaskBtn" onclick="cancelTask()" style="display:none">⛔ 终止任务</button>
+        <button class="modal-close" onclick="closeTaskModal()">✕</button>
+      </div>
     </div>
     <div class="modal-body">
       <div class="stats-row">
@@ -197,8 +203,8 @@ let pollTimer = null;
 let lastTaskData = null;
 let expandedSites = new Set();
 
-const STATUS_LABELS = { idle:'等待中', scraping:'爬虫执行中', llm_waiting:'LLM等待中', llm_extracting:'LLM提取中', completed:'已完成', failed:'失败' };
-const STATUS_ICONS = { idle:'⏳', scraping:'🔍', llm_waiting:'⏳', llm_extracting:'🤖', completed:'✅', failed:'❌' };
+const STATUS_LABELS = { idle:'等待中', scraping:'爬虫执行中', llm_waiting:'LLM等待中', llm_extracting:'LLM提取中', completed:'已完成', failed:'失败', cancelled:'已终止' };
+const STATUS_ICONS = { idle:'⏳', scraping:'🔍', llm_waiting:'⏳', llm_extracting:'🤖', completed:'✅', failed:'❌', cancelled:'🛑' };
 
 async function doLogin() {
   const pwd = document.getElementById('passwordInput').value;
@@ -320,6 +326,17 @@ function openTaskModal() {
 }
 function closeTaskModal() { document.getElementById('taskModal').classList.remove('active'); }
 
+async function cancelTask() {
+  if (!currentTaskId) return;
+  if (!confirm('确定要终止当前任务吗？正在运行的爬虫和 LLM 提取将被强制停止。')) return;
+  try {
+    const resp = await fetch(`/api/admin/batch-scrape/${currentTaskId}/cancel`, { method: 'POST', headers: { 'X-Admin-Token': adminToken } });
+    if (!resp.ok) { const err = await resp.json(); alert(err.detail || '终止失败'); return; }
+    // 立即刷新状态
+    await pollTaskStatus();
+  } catch (e) { alert('网络错误: ' + e.message); }
+}
+
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(pollTaskStatus, 2000);
@@ -334,7 +351,7 @@ async function pollTaskStatus() {
     lastTaskData = data;
     showTaskBtn();
     renderTaskUI(data);
-    if (data.status === 'completed' || data.status === 'failed') {
+    if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
       clearInterval(pollTimer);
       pollTimer = null;
       showTaskBtn();
@@ -343,6 +360,10 @@ async function pollTaskStatus() {
 }
 
 function renderTaskUI(data) {
+  // 终止按钮显示逻辑
+  const cancelBtn = document.getElementById('cancelTaskBtn');
+  cancelBtn.style.display = data.status === 'running' ? 'inline-block' : 'none';
+
   // 统计
   const sites = data.sites || [];
   document.getElementById('statTotal').textContent = data.total_sites || 0;

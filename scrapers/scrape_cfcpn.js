@@ -133,6 +133,7 @@ function getYesterday() {
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
+function formatScrapeTime() { const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}`; }
 
 function rowToOutput(r) {
   return {
@@ -243,6 +244,7 @@ async function main() {
   if (allRows.length === 0) {
     if (listPages) {
       console.log('✓ 该日期范围内无数据');
+      new JsonWriter(OUTPUT_JSON, { source: '金采网', scrapeTime: formatScrapeTime() });
       return;
     }
     const existing = loadExistingData();
@@ -251,20 +253,20 @@ async function main() {
       else { console.error('⚠ 无数据文件，用 --list 5 先爬列表'); process.exit(1); }
     }
     if (isResume) {
-      writer = new JsonWriter(OUTPUT_JSON, { source: '金采网', scrapeTime: new Date().toISOString().substring(0, 13) });
+      writer = new JsonWriter(OUTPUT_JSON, { source: '金采网', scrapeTime: formatScrapeTime() });
       existing.rows.forEach((r) => writer.addRow(r));
       startDetailIdx = existing.rows.findIndex((r) => !r.content);
       if (startDetailIdx < 0) startDetailIdx = existing.rows.length;
       console.log(`♻ 续爬: ${existing.rows.length} 条, 正文从第 ${startDetailIdx + 1} 条\n`);
     } else {
-      writer = new JsonWriter(OUTPUT_JSON, { source: '金采网', scrapeTime: new Date().toISOString().substring(0, 13) });
+      writer = new JsonWriter(OUTPUT_JSON, { source: '金采网', scrapeTime: formatScrapeTime() });
       existing.rows.forEach((r) => writer.addRow(r));
       console.log(`📂 加载 ${existing.rows.length} 条\n`);
     }
     allRows = existing.rows; // already in output format
   } else {
     // 从列表阶段的数据初始化写入器
-    writer = new JsonWriter(OUTPUT_JSON, { source: '金采网', scrapeTime: new Date().toISOString().substring(0, 13) });
+    writer = new JsonWriter(OUTPUT_JSON, { source: '金采网', scrapeTime: formatScrapeTime() });
     for (const row of allRows) {
       writer.addRow(rowToOutput(row));
     }

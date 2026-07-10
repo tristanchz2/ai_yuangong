@@ -95,6 +95,7 @@ function getYesterday() {
   d.setDate(d.getDate() - 1);
   return formatDate(d);
 }
+function formatScrapeTime() { const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}`; }
 
 // ===================== 列表解析 =====================
 async function fetchList(page = 1, rows = 12) {
@@ -177,7 +178,7 @@ async function main() {
   // 初始化 JsonWriter
   const writer = new JsonWriter(OUTPUT_JSON, {
     source: '广发银行',
-    scrapeTime: new Date().toISOString().substring(0, 13)
+    scrapeTime: formatScrapeTime()
   });
 
   // 获取列表（API 一次性返回所有数据）
@@ -205,6 +206,7 @@ async function main() {
 
   if (allItems.length === 0) {
     console.log('\n❌ 没有找到符合条件的记录');
+    new JsonWriter(OUTPUT_JSON, { source: '广发银行', scrapeTime: formatScrapeTime() });
     return;
   }
 

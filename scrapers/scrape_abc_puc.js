@@ -145,6 +145,7 @@ function getYesterday() {
   d.setDate(d.getDate() - 1);
   return formatDate(d);
 }
+function formatScrapeTime() { const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}`; }
 
 // ===================== 主流程 =====================
 
@@ -245,7 +246,7 @@ async function main() {
 
     if (allItems.length === 0) {
       console.log('✓ 无匹配数据');
-      new JsonWriter(OUTPUT_JSON, { source: '农银e采', scrapeTime: new Date().toISOString().substring(0, 13) });
+      new JsonWriter(OUTPUT_JSON, { source: '农银e采', scrapeTime: formatScrapeTime() });
       await cycleTLS.exit();
       return;
     }
@@ -253,7 +254,7 @@ async function main() {
     // ---- 初始化增量写入器 ----
     const writer = new JsonWriter(OUTPUT_JSON, {
       source: '农银e采',
-      scrapeTime: new Date().toISOString().substring(0, 13),
+      scrapeTime: formatScrapeTime(),
     });
 
     // ---- 详情爬取 ----

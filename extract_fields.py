@@ -15,9 +15,12 @@
 import asyncio
 import json
 import os
+import sys
 import glob
 import argparse
+import signal
 import time
+import fcntl
 from pathlib import Path
 from typing import Optional, List, Literal
 from pydantic import BaseModel, Field
@@ -129,6 +132,40 @@ RAW_DATA_DIR = PROJECT_ROOT / "raw_data"
 OUTPUT_DIR = PROJECT_ROOT / "extracted_data"
 
 # ──────────────────────────────────────────────
+# 文件锁工具：带超时 + 确保释放
+# ──────────────────────────────────────────────
+import contextlib
+
+
+@contextlib.contextmanager
+def file_lock(lock_path: Path, timeout: float = 30.0):
+    """带超时的文件锁上下文管理器。
+    - 使用 LOCK_NB 非阻塞尝试 + 轮询，避免无限等待
+    - 无论正常退出、异常、SIGTERM，都确保锁被释放
+    """
+    lock_file = open(lock_path, "w")
+    acquired = False
+    try:
+        deadline = time.time() + timeout
+        while True:
+            try:
+                fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except (IOError, OSError):
+                if time.time() >= deadline:
+                    raise TimeoutError(f"获取文件锁超时: {lock_path}")
+                time.sleep(0.2)
+        yield lock_file
+    finally:
+        if acquired:
+            try:
+                fcntl.flock(lock_file, fcntl.LOCK_UN)
+            except Exception:
+                pass
+        lock_file.close()
+
+# ──────────────────────────────────────────────
 # 省份后处理：LLM 可能输出 "福建省"/"北京市" 等，统一修正为枚举值
 # ──────────────────────────────────────────────
 _PROVINCE_SUFFIXES = ("省", "市", "自治区", "壮族自治区", "回族自治区", "维吾尔自治区", "特别行政区")
@@ -230,6 +267,35 @@ def build_schema_description() -> str:
     return "\n".join(lines)
 
 
+# ──────────────────────────────────────────────
+# 全局取消机制：SIGTERM 信号 + 取消信号文件
+# ──────────────────────────────────────────────
+_cancelled = False
+_cancel_file_path: Optional[Path] = None
+
+
+def _handle_sigterm(signum, frame):
+    """收到 SIGTERM 信号时优雅退出"""
+    global _cancelled
+    _cancelled = True
+    print("\n🛑 收到终止信号(SIGTERM)，立即停止...")
+    sys.exit(1)
+
+
+def _is_cancelled() -> bool:
+    """检查是否已被取消（全局标志 + 取消信号文件）"""
+    global _cancelled
+    if _cancelled:
+        return True
+    if _cancel_file_path and _cancel_file_path.exists():
+        _cancelled = True
+        return True
+    return False
+
+
+# 注册 SIGTERM 处理（batch_scraper.py 会先发 SIGTERM 再 kill）
+signal.signal(signal.SIGTERM, _handle_sigterm)
+
 # 全局限流器：控制请求发送速率，避免触发 API 限流
 _rate_limiter_lock = asyncio.Lock()
 _last_request_time = 0.0
@@ -258,6 +324,11 @@ async def extract_batch(
     批量提取：将多条公告打包成一次 LLM 调用，返回 [(index, extracted_dict), ...]。
     支持 429 限流自动重试。
     """
+    # ★ 每次 LLM 调用前检查取消信号
+    if _is_cancelled():
+        print(f"  🛑 {batch_label}: 已取消，跳过 LLM 调用")
+        return [(i, None) for i, _, _ in batch]
+
     model = os.environ.get("OPENAI_MODEL", "qwen3.7-plus")
     schema_desc = build_schema_description()
 
@@ -279,6 +350,10 @@ async def extract_batch(
 
     async with semaphore:
         for attempt in range(1, max_retries + 1):
+            # ★ 重试前也检查取消信号
+            if _is_cancelled():
+                print(f"  🛑 {batch_label}: 已取消，中止重试")
+                return [(i, None) for i, _, _ in batch]
             await _rate_limit()
             try:
                 response = await client.chat.completions.create(
@@ -406,9 +481,12 @@ async def process_file(
         # 从 raw_data 平移 url 和 content
         url = row.get("url") or row.get("sourceUrl") or None
         content_raw = row.get("content", "")
+        # 保留原始发布日期（publishTime），用于按日期分组输出
+        raw_publish_time = row.get("publishTime") or row.get("publish_time") or row.get("date") or ""
         result = {
             "source": source,
             "scrape_time": scrape_time,
+            "raw_publish_time": raw_publish_time,
             "url": url,
             "content": content_raw,
             **extracted,
@@ -450,7 +528,18 @@ async def async_main():
         default=None,
         help="输出文件名后缀（如 abc_puc_1234），用于区分不同运行。不加后缀则按日期覆盖。",
     )
+    parser.add_argument(
+        "--cancel-file",
+        type=str,
+        default=None,
+        help="取消信号文件路径。如果该文件存在，则跳过写入。",
+    )
     args = parser.parse_args()
+
+    # ★ 设置全局取消信号文件路径，供 _is_cancelled() 检查
+    global _cancel_file_path
+    if args.cancel_file:
+        _cancel_file_path = Path(args.cancel_file)
 
     # 确定要处理的文件
     if args.source:
@@ -492,6 +581,11 @@ async def async_main():
     all_file_coros = [process_file(client, fp, semaphore, batch_size=args.batch_size) for fp in files]
     all_file_results = await asyncio.gather(*all_file_coros)
 
+    # ★ LLM 完成后立即检查取消信号，避免已取消的任务还写入数据
+    if _is_cancelled():
+        print(f"\n🛑 LLM 提取完成后检测到取消信号，跳过数据写入")
+        return
+
     all_results = []
     for results in all_file_results:
         all_results.extend(results)
@@ -507,23 +601,25 @@ async def async_main():
     for folder in folders.values():
         folder.mkdir(parents=True, exist_ok=True)
 
-    # 按 scrape_time 的日期分组（同一天的一起保存）
-    # scrape_time 格式如 "2026-07-09T10..."，取前 10 位作为日期
+    # 按数据的发布日期（publishTime）分组，而不是爬虫运行时间
     date_groups = {}  # {date_str: {notice_type: [records]}}
     for r in all_results:
-        scrape_date = (r.get("scrape_time") or "")[:10]  # "2026-07-09"
-        if not scrape_date or len(scrape_date) < 10:
-            scrape_date = "unknown"
+        # 优先用 raw_publish_time（数据实际发布日期），fallback 到 scrape_time
+        raw_pt = (r.get("raw_publish_time") or "")[:10]
+        if raw_pt and len(raw_pt) == 10 and raw_pt[0] == "2":
+            data_date = raw_pt
+        else:
+            data_date = (r.get("scrape_time") or "")[:10]
+        if not data_date or len(data_date) < 10:
+            data_date = "unknown"
         nt = r.get("notice_type", "其他")
         if nt not in ("采购公告", "结果公告", "其他"):
             nt = "其他"
-        if scrape_date not in date_groups:
-            date_groups[scrape_date] = {"采购公告": [], "结果公告": [], "其他": []}
-        date_groups[scrape_date][nt].append(r)
+        if data_date not in date_groups:
+            date_groups[data_date] = {"采购公告": [], "结果公告": [], "其他": []}
+        date_groups[data_date][nt].append(r)
 
-    # 保存到对应文件夹
-    # 如果指定了 --suffix，文件名包含后缀以避免并发覆盖；否则按日期覆盖
-    suffix = args.suffix  # 如 "abc_puc_1720000000"
+    # 保存到对应文件夹，按日期合并（同一天同一类型合并，不同天保留）
     folders = {
         "采购公告": OUTPUT_DIR / "采购公告",
         "结果公告": OUTPUT_DIR / "结果公告",
@@ -532,32 +628,63 @@ async def async_main():
     for folder in folders.values():
         folder.mkdir(parents=True, exist_ok=True)
 
+    # ── 写入前检查取消信号（统一用 _is_cancelled）──
+    if _is_cancelled():
+        print(f"\n🛑 检测到取消信号，跳过数据写入")
+        return
+
     saved_count = 0
     for date_str, type_groups in date_groups.items():
-        for notice_type, records in type_groups.items():
-            if not records:
+        for notice_type, new_records in type_groups.items():
+            if not new_records:
                 continue
+            # 每个文件写入前都检查取消信号
+            if _is_cancelled():
+                print(f"\n🛑 检测到取消信号，停止写入（已保存 {saved_count} 条）")
+                break
             folder = folders[notice_type]
-            if suffix:
-                filename = f"{date_str}_{suffix}.json"
-            else:
-                filename = f"{date_str}.json"
-            output_path = folder / filename
-            with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(
-                    {
-                        "extractedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                        "scrapeDate": date_str,
-                        "noticeType": notice_type,
-                        "totalRecords": len(records),
-                        "records": records,
-                    },
-                    f,
-                    ensure_ascii=False,
-                    indent=2,
-                )
-            saved_count += len(records)
-            print(f"  📁 {notice_type} ({date_str}): {len(records)} 条 -> {output_path.name}")
+            output_path = folder / f"{date_str}.json"
+
+            # 用文件锁保证并发安全（带超时 + 确保释放）
+            lock_path = folder / f".{date_str}_{notice_type}.lock"
+            try:
+                with file_lock(lock_path, timeout=30.0):
+                    # 读取已有数据
+                    existing_records = []
+                    if output_path.exists():
+                        try:
+                            with open(output_path, "r", encoding="utf-8") as f:
+                                old_data = json.load(f)
+                                existing_records = old_data.get("records", [])
+                        except Exception:
+                            existing_records = []
+
+                    # 提取本次新数据的源列表
+                    new_sources = set(r.get("source", "") for r in new_records)
+
+                    # 保留来自不同源的旧数据，替换同源旧数据
+                    kept_old = [r for r in existing_records if r.get("source", "") not in new_sources]
+                    merged = kept_old + new_records
+
+                    with open(output_path, "w", encoding="utf-8") as f:
+                        json.dump(
+                            {
+                                "extractedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                                "scrapeDate": date_str,
+                                "noticeType": notice_type,
+                                "totalRecords": len(merged),
+                                "records": merged,
+                            },
+                            f,
+                            ensure_ascii=False,
+                            indent=2,
+                        )
+                    saved_count += len(new_records)
+                    print(f"  📁 {notice_type} ({date_str}): 新增 {len(new_records)} 条，合并后共 {len(merged)} 条 -> {output_path.name}")
+            except TimeoutError as e:
+                print(f"  ⚠️ {notice_type} ({date_str}): {e}，跳过写入")
+            except Exception as e:
+                print(f"  ❌ {notice_type} ({date_str}): 写入失败 - {e}")
 
     print(f"\n✅ 提取完成！共 {saved_count} 条记录")
     print(f"📂 输出目录: {OUTPUT_DIR}")

@@ -182,6 +182,7 @@ function getYesterday() {
   d.setDate(d.getDate() - 1);
   return formatDate(d);
 }
+function formatScrapeTime() { const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}`; }
 
 /**
  * 格式化 ICBC 时间戳
@@ -303,14 +304,14 @@ async function main() {
 
   if (allItems.length === 0) {
     console.log('✓ 无匹配数据');
-    new JsonWriter(OUTPUT_JSON, { source: '工银集采', scrapeTime: new Date().toISOString().substring(0, 13) });
+    new JsonWriter(OUTPUT_JSON, { source: '工银集采', scrapeTime: formatScrapeTime() });
     return;
   }
 
   // ---- 初始化增量写入器 ----
   const writer = new JsonWriter(OUTPUT_JSON, {
     source: '工银集采',
-    scrapeTime: new Date().toISOString().substring(0, 13),
+    scrapeTime: formatScrapeTime(),
   });
 
   // ---- 爬取详情 ----
@@ -345,7 +346,7 @@ async function main() {
     writer.addRow({
       publishTime: formatIssueDate(item.issueDate),
       title: item.noticeTitle,
-      url: item.noticeUrl || '',
+      url: `https://jc.icbc.com.cn/#/notice_detailInfo/${item.noticeId}`,
       content: stripHtml(item._content),
     });
   }

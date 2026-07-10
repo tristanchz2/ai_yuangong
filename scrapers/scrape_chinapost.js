@@ -101,6 +101,7 @@ function getYesterday() {
   d.setDate(d.getDate() - 1);
   return formatDate(d);
 }
+function formatScrapeTime() { const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}`; }
 
 // ===================== 列表页解析 =====================
 function parseListPage(html) {
@@ -188,7 +189,7 @@ async function main() {
 
   const writer = new JsonWriter(OUTPUT_JSON, {
     source: '中国邮政',
-    scrapeTime: new Date().toISOString().substring(0, 13)
+    scrapeTime: formatScrapeTime()
   });
 
   let items = [];

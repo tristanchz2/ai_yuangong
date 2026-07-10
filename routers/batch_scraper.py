@@ -55,12 +55,17 @@ class BatchScraperTask:
     def __init__(self, task_id: str, mode: str = "yesterday"):
         self.task_id = task_id
         self.mode = mode
-        self.status = "pending"  # pending, running, completed, failed
+        self.status = "pending"  # pending, running, completed, failed, cancelled
         self.created_at = time.time()
         self.started_at: Optional[float] = None
         self.finished_at: Optional[float] = None
         self.site_tasks: List[SiteTask] = []
         self.logs: List[str] = []
+        self.cancelled = False
+        self._running_processes: List[asyncio.subprocess.Process] = []
+        # 取消信号文件：传给 extract_fields.py 子进程
+        self._cancel_file = PROJECT_ROOT / f".cancel_{task_id}"
+
 
     def add_log(self, msg: str):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -77,6 +82,7 @@ class BatchScraperTask:
         return {
             "task_id": self.task_id,
             "status": self.status,
+            "cancelled": self.cancelled,
             "mode": self.mode,
             "total_sites": total,
             "completed_sites": completed,
@@ -89,6 +95,64 @@ class BatchScraperTask:
             "sites": [st.to_dict() for st in self.site_tasks],
             "logs": self.logs[-100:],
         }
+
+    def request_cancel(self):
+        """标记任务为取消状态，并终止所有正在运行的子进程"""
+        self.cancelled = True
+        self.status = "cancelled"
+        self.add_log("🛑 收到终止指令，正在停止所有运行中的任务...")
+
+        # ① 立即创建取消信号文件（extract_fields.py 会在 LLM 调用和写入前检查）
+        try:
+            self._cancel_file.write_text(str(time.time()))
+        except Exception:
+            pass
+
+        killed = 0
+        # ② 先 SIGTERM 所有子进程，给 Python 子进程一个优雅退出的机会
+        for proc in list(self._running_processes):
+            try:
+                if proc.returncode is None:
+                    proc.terminate()
+                    killed += 1
+            except Exception:
+                pass
+        # 兜底：终止 SiteTask 上残留的进程
+        for st in self.site_tasks:
+            proc = getattr(st, '_current_process', None)
+            if proc and proc.returncode is None:
+                try:
+                    proc.terminate()
+                    killed += 1
+                except Exception:
+                    pass
+
+        # ③ 短暂等待后强制 kill 仍然存活的进程
+        time.sleep(0.3)
+        for proc in list(self._running_processes):
+            try:
+                if proc.returncode is None:
+                    proc.kill()
+            except Exception:
+                pass
+        for st in self.site_tasks:
+            proc = getattr(st, '_current_process', None)
+            if proc and proc.returncode is None:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+
+        self._running_processes.clear()
+        self.add_log(f"🛑 已终止 {killed} 个子进程")
+        # 将所有站点标记为失败
+        for st in self.site_tasks:
+            if st.status in ("scraping", "llm_waiting", "llm_extracting"):
+                st.status = "failed"
+                st.error = "用户终止了任务"
+                st.add_log("🛑 任务被用户终止")
+                st.end_time = time.time()
+        self.finished_at = time.time()
 
 
 # 全局任务存储
@@ -122,19 +186,46 @@ async def run_batch_scrape(task: BatchScraperTask, sites: List[Dict]):
         _run_site_pipeline(task, st, scraper_sem, llm_sem, mode_args)
         for st in task.site_tasks
     ]
-    await asyncio.gather(*coros)
+    try:
+        await asyncio.gather(*coros)
+    except asyncio.CancelledError:
+        task.add_log("🛑 主协程被取消")
+
+    # 完成后确保所有残留进程被清理
+    for proc in list(task._running_processes):
+        try:
+            if proc.returncode is None:
+                proc.kill()
+        except Exception:
+            pass
+    task._running_processes.clear()
+
+    # 清理取消信号文件
+    try:
+        if task._cancel_file.exists():
+            task._cancel_file.unlink()
+    except Exception:
+        pass
 
     # 完成
     task.finished_at = time.time()
-    task.status = "completed"
-
-    success = sum(1 for st in task.site_tasks if st.status == "completed")
-    failed = sum(1 for st in task.site_tasks if st.status == "failed")
-    task.add_log("")
-    task.add_log("=" * 50)
-    task.add_log(f"📊 批量爬取完成! 成功: {success}, 失败: {failed}")
-    task.add_log(f"⏱️  总耗时: {task.finished_at - task.started_at:.1f}秒")
-    task.add_log("=" * 50)
+    if task.cancelled:
+        task.add_log("")
+        task.add_log("=" * 50)
+        task.add_log("🛑 任务已被终止")
+        success = sum(1 for st in task.site_tasks if st.status == "completed")
+        failed = sum(1 for st in task.site_tasks if st.status == "failed")
+        task.add_log(f"📊 终止时进度: 成功 {success}, 失败 {failed}")
+        task.add_log("=" * 50)
+    else:
+        task.status = "completed"
+        success = sum(1 for st in task.site_tasks if st.status == "completed")
+        failed = sum(1 for st in task.site_tasks if st.status == "failed")
+        task.add_log("")
+        task.add_log("=" * 50)
+        task.add_log(f"📊 批量爬取完成! 成功: {success}, 失败: {failed}")
+        task.add_log(f"⏱️  总耗时: {task.finished_at - task.started_at:.1f}秒")
+        task.add_log("=" * 50)
 
 
 async def _run_site_pipeline(
@@ -147,12 +238,28 @@ async def _run_site_pipeline(
     """单个站点的完整流水线：爬虫 → LLM提取"""
     st.start_time = time.time()
 
+    # 检查任务是否已被取消
+    if task.cancelled:
+        st.status = "failed"
+        st.error = "任务已被终止"
+        st.add_log("🛑 任务已被终止，跳过")
+        st.end_time = time.time()
+        return
+
     # ── 阶段1: 爬虫执行 ──
     st.status = "scraping"
     st.add_log(f"▶ 开始爬取: {st.site['name']}")
 
     async with scraper_sem:
-        scraper_ok = await _run_scraper_process(st, mode_args)
+        scraper_ok = await _run_scraper_process(task, st, mode_args)
+
+    # 爬虫完成后立即检查取消
+    if task.cancelled:
+        st.status = "failed"
+        st.error = "任务已被终止"
+        st.add_log("🛑 爬虫阶段后被终止")
+        st.end_time = time.time()
+        return
 
     if not scraper_ok:
         st.status = "failed"
@@ -165,11 +272,34 @@ async def _run_site_pipeline(
     st.status = "llm_waiting"
     st.add_log("⏳ 等待 LLM 提取...")
 
+    # LLM 提取前再次检查取消
+    if task.cancelled:
+        st.status = "failed"
+        st.error = "任务已被终止"
+        st.add_log("🛑 任务已被终止，跳过 LLM 提取")
+        st.end_time = time.time()
+        return
+
     st.status = "llm_extracting"
     st.add_log(f"🤖 开始 LLM 字段提取: {st.site.get('scraper_name', '')}")
 
     async with llm_sem:
-        extract_ok = await _run_field_extraction(st)
+        # 进入 LLM 前再做一次检查（可能在等信号量期间被取消）
+        if task.cancelled:
+            st.status = "failed"
+            st.error = "任务已被终止"
+            st.add_log("🛑 等待 LLM 信号量时被终止")
+            st.end_time = time.time()
+            return
+        extract_ok = await _run_field_extraction(task, st)
+
+    # 最终检查
+    if task.cancelled:
+        st.status = "failed"
+        st.error = "任务已被终止"
+        st.add_log("🛑 LLM 阶段后被终止")
+        st.end_time = time.time()
+        return
 
     if extract_ok:
         st.status = "completed"
@@ -180,7 +310,7 @@ async def _run_site_pipeline(
     st.end_time = time.time()
 
 
-async def _run_scraper_process(st: SiteTask, mode_args: List[str]) -> bool:
+async def _run_scraper_process(task: BatchScraperTask, st: SiteTask, mode_args: List[str]) -> bool:
     """运行爬虫 Node.js 进程"""
     scraper_name = st.site.get("scraper_name", "")
     scraper_path = SCRAPERS_DIR / f"scrape_{scraper_name}.js"
@@ -200,10 +330,18 @@ async def _run_scraper_process(st: SiteTask, mode_args: List[str]) -> bool:
             stderr=asyncio.subprocess.STDOUT,
             cwd=str(SCRAPERS_DIR),
         )
+        # 注册进程到 task 和 st，以便终止
+        st._current_process = process
+        task._running_processes.append(process)
 
         while True:
             try:
-                line = await asyncio.wait_for(process.stdout.readline(), timeout=300.0)
+                # 每读一行都检查取消状态
+                if task.cancelled:
+                    process.kill()
+                    st.add_log("🛑 爬虫进程因任务取消被终止")
+                    return False
+                line = await asyncio.wait_for(process.stdout.readline(), timeout=10.0)
                 if not line:
                     if process.returncode is not None:
                         break
@@ -212,9 +350,14 @@ async def _run_scraper_process(st: SiteTask, mode_args: List[str]) -> bool:
                 if decoded:
                     st.add_log(decoded[:120])
             except asyncio.TimeoutError:
+                if task.cancelled:
+                    process.kill()
+                    st.add_log("🛑 爬虫进程因任务取消被终止")
+                    return False
+                continue
+            except asyncio.CancelledError:
                 process.kill()
-                st.error = "爬虫执行超时 (>5分钟)"
-                st.add_log(f"✗ {st.error}")
+                st.add_log("🛑 爬虫进程被终止")
                 return False
             except Exception:
                 if process.returncode is not None:
@@ -222,6 +365,11 @@ async def _run_scraper_process(st: SiteTask, mode_args: List[str]) -> bool:
                 continue
 
         await process.wait()
+
+        # 从注册表中移除
+        if process in task._running_processes:
+            task._running_processes.remove(process)
+        st._current_process = None
 
         if process.returncode != 0:
             st.error = f"爬虫退出码: {process.returncode}"
@@ -250,21 +398,21 @@ async def _run_scraper_process(st: SiteTask, mode_args: List[str]) -> bool:
     except Exception as e:
         st.error = str(e)
         st.add_log(f"✗ 异常: {str(e)}")
+        # 清理
+        if process in task._running_processes:
+            task._running_processes.remove(process)
         return False
 
 
-async def _run_field_extraction(st: SiteTask) -> bool:
-    """运行 extract_fields.py 进行字段提取，输出到 extracted_data/{notice_type}/"""
+async def _run_field_extraction(task: BatchScraperTask, st: SiteTask) -> bool:
+    """运行 extract_fields.py 进行字段提取，合并写入 extracted_data/{notice_type}/{date}.json"""
     source = st.site.get("scraper_name", "")
-    # 生成唯一后缀，避免并发运行时输出文件互相覆盖
-    run_suffix = f"{source}_{int(time.time())}"
-    st.add_log(f"📂 输出文件后缀: {run_suffix}")
 
     cmd = [
         "python3", str(EXTRACT_SCRIPT),
         "--source", source,
-        "--concurrency", "1",
-        "--suffix", run_suffix,
+        "--concurrency", str(MAX_LLM_CONCURRENCY),
+        "--cancel-file", str(task._cancel_file),
     ]
 
     try:
@@ -274,10 +422,21 @@ async def _run_field_extraction(st: SiteTask) -> bool:
             stderr=asyncio.subprocess.STDOUT,
             cwd=str(PROJECT_ROOT),
         )
+        st._current_process = process
+        task._running_processes.append(process)
 
         while True:
             try:
-                line = await asyncio.wait_for(process.stdout.readline(), timeout=600.0)
+                # 每读一行都检查取消状态
+                if task.cancelled:
+                    process.kill()
+                    st.add_log("🛑 LLM 进程因任务取消被终止")
+                    # 从注册表中移除
+                    if process in task._running_processes:
+                        task._running_processes.remove(process)
+                    st._current_process = None
+                    return False
+                line = await asyncio.wait_for(process.stdout.readline(), timeout=10.0)
                 if not line:
                     if process.returncode is not None:
                         break
@@ -286,9 +445,20 @@ async def _run_field_extraction(st: SiteTask) -> bool:
                 if decoded:
                     st.add_log(f"[LLM] {decoded[:120]}")
             except asyncio.TimeoutError:
+                if task.cancelled:
+                    process.kill()
+                    st.add_log("🛑 LLM 进程因任务取消被终止")
+                    if process in task._running_processes:
+                        task._running_processes.remove(process)
+                    st._current_process = None
+                    return False
+                continue
+            except asyncio.CancelledError:
                 process.kill()
-                st.error = "LLM 提取超时 (>10分钟)"
-                st.add_log(f"✗ {st.error}")
+                st.add_log("🛑 LLM 进程被终止")
+                if process in task._running_processes:
+                    task._running_processes.remove(process)
+                st._current_process = None
                 return False
             except Exception:
                 if process.returncode is not None:
@@ -297,13 +467,18 @@ async def _run_field_extraction(st: SiteTask) -> bool:
 
         await process.wait()
 
+        # 从注册表中移除
+        if process in task._running_processes:
+            task._running_processes.remove(process)
+        st._current_process = None
+
         if process.returncode != 0:
             st.error = f"LLM 提取退出码: {process.returncode}"
             st.add_log(f"✗ {st.error}")
             return False
 
-        # 统计本次提取生成的记录数
-        st.extracted_rows = _count_extracted_records(run_suffix)
+        # 统计该源在 extracted_data 中的记录数
+        st.extracted_rows = _count_extracted_records(source)
         return True
 
     except FileNotFoundError:
@@ -316,19 +491,19 @@ async def _run_field_extraction(st: SiteTask) -> bool:
         return False
 
 
-def _count_extracted_records(suffix: str) -> int:
-    """统计指定 suffix 的提取记录数"""
+def _count_extracted_records(source: str) -> int:
+    """统计指定源在 extracted_data 中的记录数"""
     try:
         extracted_dir = PROJECT_ROOT / "extracted_data"
         total = 0
         for folder in ["采购公告", "结果公告", "其他"]:
             folder_path = extracted_dir / folder
             if folder_path.exists():
-                # 查找包含该 suffix 的文件（如 2026-07-09_abc_puc_1234.json）
-                for f in folder_path.glob(f"*_{suffix}.json"):
+                for f in folder_path.glob("*.json"):
                     with open(f, "r", encoding="utf-8") as fh:
                         data = json.load(fh)
-                        total += len(data.get("records", []))
+                        records = data.get("records", [])
+                        total += sum(1 for r in records if r.get("source") == source)
         return total
     except Exception:
         return 0

@@ -210,3 +210,16 @@ async def get_site_logs(task_id: str, site_id: int, _=Depends(verify_admin_token
             }
     raise HTTPException(status_code=404, detail=f"站点不存在: id={site_id}")
 
+
+@router.post("/batch-scrape/{task_id}/cancel")
+async def cancel_batch_scrape(task_id: str, _=Depends(verify_admin_token)):
+    """终止正在运行的批量爬取任务"""
+    from routers.batch_scraper import get_batch_task
+    task = get_batch_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    if task.status != "running":
+        raise HTTPException(status_code=400, detail=f"任务不在运行中 (当前状态: {task.status})")
+    task.request_cancel()
+    return {"message": "任务已终止", "task_id": task_id}
+

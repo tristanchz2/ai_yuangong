@@ -40,3 +40,6 @@ tmp/
 temp/
 *.tmp
 .qoder
+
+# 取消信号文件
+.cancel_*

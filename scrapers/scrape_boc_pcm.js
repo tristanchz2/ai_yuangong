@@ -217,6 +217,7 @@ function getYesterday() {
   d.setDate(d.getDate() - 1);
   return formatDate(d);
 }
+function formatScrapeTime() { const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}`; }
 
 // ===================== 主流程 =====================
 
@@ -326,14 +327,14 @@ async function main() {
 
   if (allItems.length === 0) {
     console.log('✓ 无匹配数据');
-    new JsonWriter(OUTPUT_JSON, { source: '中银智采', scrapeTime: new Date().toISOString().substring(0, 13) });
+    new JsonWriter(OUTPUT_JSON, { source: '中银智采', scrapeTime: formatScrapeTime() });
     return;
   }
 
   // ---- 初始化增量写入器 ----
   const writer = new JsonWriter(OUTPUT_JSON, {
     source: '中银智采',
-    scrapeTime: new Date().toISOString().substring(0, 13),
+    scrapeTime: formatScrapeTime(),
   });
 
   // ---- 爬取详情 ----
@@ -369,7 +370,7 @@ async function main() {
       title: item.ancmHdlnCntnt || '',
       noticeType: NOTICE_TYPE_MAP[item.noticeType] || item.noticeType,
       publishTime: item.ancmAncDt || '',
-      url: '',
+      url: `https://ctpch.fmscop.bankofchina.com/pcm/#/first-page/detail?noticeType=${item.noticeType}&pkNotice=${item.pkNotice}&purchaseType=0&page=1`,
       content: stripHtml(item.ancmCntnt || ''),
     });
   }

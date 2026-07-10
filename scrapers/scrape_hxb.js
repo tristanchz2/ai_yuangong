@@ -81,6 +81,7 @@ function formatDate(d) {
 function getYesterday() {
   const d = new Date(); d.setDate(d.getDate() - 1); return formatDate(d);
 }
+function formatScrapeTime() { const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}`; }
 
 // ===================== 列表解析 =====================
 
@@ -162,7 +163,7 @@ async function main() {
   if (mode === 'date') {
     items = items.filter(it => it.date === targetDate);
     console.log(`  日期 ${targetDate} 匹配 ${items.length} 条`);
-    if (items.length === 0) { console.log('  无匹配数据'); return; }
+    if (items.length === 0) { console.log('  无匹配数据'); new JsonWriter(OUTPUT_JSON, { source: '华夏银行', scrapeTime: formatScrapeTime() }); return; }
   } else {
     items = items.slice(0, count);
   }
@@ -170,7 +171,7 @@ async function main() {
   // 3. Init writer
   const writer = new JsonWriter(OUTPUT_JSON, {
     source: '华夏银行',
-    scrapeTime: new Date().toISOString().substring(0, 13),
+    scrapeTime: formatScrapeTime()
   });
 
   // 4. Fetch detail pages

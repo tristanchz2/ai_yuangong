@@ -218,6 +218,9 @@ async function main() {
   }
 
   // ---- 标准接口参数转换 ----
+  const pad2 = (n) => String(n).padStart(2, '0');
+  function formatLocalDate(d) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+  function formatScrapeTime() { const d = new Date(); return `${formatLocalDate(d)}T${pad2(d.getHours())}`; }
   const latestIdx = args.indexOf('--latest');
   const isYesterday = args.includes('--yesterday');
 
@@ -247,7 +250,7 @@ async function main() {
   if (isYesterdayArg) {
     const d = new Date();
     d.setDate(d.getDate() - 1);
-    dateBegin = d.toISOString().substring(0, 10);
+    dateBegin = formatLocalDate(d);
     dateEnd = dateBegin;
   }
   if (beginIdx >= 0) dateBegin = args[beginIdx + 1] || '';
@@ -258,8 +261,8 @@ async function main() {
   if (listPages && !dateBegin && !dateEnd && !isYesterdayArg) {
     const now = new Date();
     const ago = new Date(now.getTime() - 30 * 86400000);
-    dateEnd = now.toISOString().substring(0, 10);
-    dateBegin = ago.toISOString().substring(0, 10);
+    dateEnd = formatLocalDate(now);
+    dateBegin = formatLocalDate(ago);
   }
 
   const maxPages = listPages === 'all' ? 99999 : (listPages ? parseInt(listPages) || 1 : 1);
@@ -346,14 +349,14 @@ async function main() {
 
   if (allEntries.length === 0) {
     console.log('  ✓ 该日期范围内无数据');
-    new JsonWriter(OUTPUT_JSON, { source: '中国政府采购网', scrapeTime: new Date().toISOString().substring(0, 13) });
+    new JsonWriter(OUTPUT_JSON, { source: '中国政府采购网', scrapeTime: formatScrapeTime() });
     return;
   }
 
   // ---- 初始化增量写入器 ----
   const writer = new JsonWriter(OUTPUT_JSON, {
     source: '中国政府采购网',
-    scrapeTime: new Date().toISOString().substring(0, 13),
+    scrapeTime: formatScrapeTime(),
   });
   for (const e of allEntries) {
     writer.addRow({
@@ -392,7 +395,7 @@ async function main() {
 
   const finalWriter = new JsonWriter(OUTPUT_JSON, {
     source: '中国政府采购网',
-    scrapeTime: new Date().toISOString().substring(0, 13),
+    scrapeTime: formatScrapeTime(),
   });
   for (const e of deduped) {
     finalWriter.addRow({

@@ -128,6 +128,7 @@ function getYesterday() {
   d.setDate(d.getDate() - 1);
   return formatDate(d);
 }
+function formatScrapeTime() { const d = new Date(); const pad = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}`; }
 
 // ===================== 主流程 =====================
 
@@ -227,14 +228,14 @@ async function main() {
 
   if (allItems.length === 0) {
     console.log('✓ 无匹配数据');
-    new JsonWriter(OUTPUT_JSON, { source: '龙集采', scrapeTime: new Date().toISOString().substring(0, 13) });
+    new JsonWriter(OUTPUT_JSON, { source: '龙集采', scrapeTime: formatScrapeTime() });
     return;
   }
 
   // ---- 初始化增量写入器 ----
   const writer = new JsonWriter(OUTPUT_JSON, {
     source: '龙集采',
-    scrapeTime: new Date().toISOString().substring(0, 13),
+    scrapeTime: formatScrapeTime(),
   });
 
   // ---- 爬取详情 ----
@@ -266,7 +267,7 @@ async function main() {
       title: item.title || '',
       noticeType: CHANNEL_TYPE_MAP[item.channelId] || '招标公告',
       publishTime: (item.releaseDate || '').substring(0, 10),
-      url: `${SITE_BASE}/cms/index.htm`,
+      url: `${SITE_BASE}/cms/index.html#/content?pId=${item.channelId || CHANNEL_ID}&id=${item.id}`,
       content: item.content || item.title,
     });
   }
