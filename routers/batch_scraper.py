@@ -127,8 +127,7 @@ class BatchScraperTask:
                 except Exception:
                     pass
 
-        # ③ 短暂等待后强制 kill 仍然存活的进程
-        time.sleep(0.3)
+        # ③ 强制 kill 仍然存活的进程（不阻塞事件循环）
         for proc in list(self._running_processes):
             try:
                 if proc.returncode is None:
@@ -335,6 +334,7 @@ async def _run_scraper_process(task: BatchScraperTask, st: SiteTask, mode_args: 
         st._current_process = process
         task._running_processes.append(process)
 
+        empty_count = 0
         while True:
             try:
                 # 每读一行都检查取消状态
@@ -344,9 +344,9 @@ async def _run_scraper_process(task: BatchScraperTask, st: SiteTask, mode_args: 
                     return False
                 line = await asyncio.wait_for(process.stdout.readline(), timeout=10.0)
                 if not line:
-                    if process.returncode is not None:
-                        break
-                    continue
+                    # stdout EOF: 不再依赖 returncode 判断，直接退出循环
+                    # returncode 会在后面的 process.wait() 中获取
+                    break
                 decoded = line.decode('utf-8', errors='replace').strip()
                 if decoded:
                     st.add_log(decoded[:120])
@@ -355,6 +355,9 @@ async def _run_scraper_process(task: BatchScraperTask, st: SiteTask, mode_args: 
                     process.kill()
                     st.add_log("🛑 爬虫进程因任务取消被终止")
                     return False
+                # 超时也检查进程是否已退出
+                if process.returncode is not None:
+                    break
                 continue
             except asyncio.CancelledError:
                 process.kill()
@@ -390,9 +393,9 @@ async def _run_scraper_process(task: BatchScraperTask, st: SiteTask, mode_args: 
         st.rows = len(rows)
 
         if len(rows) == 0:
-            st.error = "爬取数据为空"
-            st.add_log(f"✗ {st.error}")
-            return False
+            st.error = ""
+            st.add_log(f"⚠ 爬取数据为空（算作成功）")
+            return True
 
         return True
 
@@ -439,9 +442,8 @@ async def _run_field_extraction(task: BatchScraperTask, st: SiteTask) -> bool:
                     return False
                 line = await asyncio.wait_for(process.stdout.readline(), timeout=10.0)
                 if not line:
-                    if process.returncode is not None:
-                        break
-                    continue
+                    # stdout EOF: 直接退出循环，不再依赖 returncode
+                    break
                 decoded = line.decode('utf-8', errors='replace').strip()
                 if decoded:
                     st.add_log(f"[LLM] {decoded[:120]}")
@@ -453,6 +455,9 @@ async def _run_field_extraction(task: BatchScraperTask, st: SiteTask) -> bool:
                         task._running_processes.remove(process)
                     st._current_process = None
                     return False
+                # 超时也检查进程是否已退出
+                if process.returncode is not None:
+                    break
                 continue
             except asyncio.CancelledError:
                 process.kill()

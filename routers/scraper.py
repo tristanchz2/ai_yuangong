@@ -189,9 +189,8 @@ async def run_hermes_generate(task_id: str, url: str, custom_name: Optional[str]
                 try:
                     line = await asyncio.wait_for(process.stdout.readline(), timeout=900.0)
                     if not line:
-                        if process.returncode is not None:
-                            break
-                        continue
+                        # stdout EOF: 直接退出循环，不再依赖 returncode
+                        break
                     f.write(line.decode('utf-8', errors='replace'))
                     f.flush()
                 except asyncio.TimeoutError:

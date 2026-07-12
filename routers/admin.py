@@ -261,7 +261,7 @@ async def cancel_batch_scrape(task_id: str, _=Depends(verify_admin_token)):
 
 @router.get("/tasks")
 async def get_all_tasks(_=Depends(verify_admin_token)):
-    """获取所有任务历史（爬取任务 + 爬虫生成任务），按时间倒序"""
+    """获取所有任务历史（爬取任务 + 爬虫生成任务），按时间倒序，只返回最近5个"""
     from routers.batch_scraper import batch_tasks
     
     all_tasks = []
@@ -296,8 +296,8 @@ async def get_all_tasks(_=Depends(verify_admin_token)):
             'details': task
         })
     
-    # 按创建时间倒序
+    # 按创建时间倒序，只返回最近5个
     all_tasks.sort(key=lambda x: x['created_at'], reverse=True)
     
-    return {'tasks': all_tasks}
+    return {'tasks': all_tasks[:5]}
 

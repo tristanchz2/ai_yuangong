@@ -107,6 +107,24 @@
       "description": "",
       "status": "active",
       "hidden": false
+    },
+    {
+      "id": 13,
+      "name": "兴业银行采购管理系统",
+      "url": "https://cg.cib.com.cn/cms/default/webfile/gyszj/index.html",
+      "scraper_name": "cib",
+      "description": "",
+      "status": "active",
+      "hidden": false
+    },
+    {
+      "id": 14,
+      "name": "浙商银行数字采购系统",
+      "url": "https://ccgp.szcgpt.czbank.com/luban/category?parentId=700835&childrenCode=134-848230",
+      "scraper_name": "czbank",
+      "description": "",
+      "status": "active",
+      "hidden": false
     }
   ]
 }

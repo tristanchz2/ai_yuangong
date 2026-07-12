@@ -55,11 +55,13 @@
   .detail-section { background: #fff; border-radius: 12px; padding: 28px 32px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
   .detail-section-title { font-size: 16px; font-weight: 600; color: #1a1a2e; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 2px solid #f0f0f0; }
   .detail-content { font-size: 14px; line-height: 1.8; color: #444; word-break: break-word; white-space: pre-wrap; }
-  .detail-content.collapsed { max-height: 150px; overflow: hidden; }
-  .detail-content.collapsed::after { content: ''; display: block; height: 60px; background: linear-gradient(transparent, #fff); margin-top: -60px; }
-  .expand-btn { display: block; margin: 12px auto 0; padding: 8px 24px; background: #f5f5f5; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; font-size: 13px; color: #667eea; transition: all .2s; }
-  .expand-btn:hover { background: #667eea; color: #fff; border-color: #667eea; }
-  @media (max-width: 768px) { .card-row { grid-template-columns: 1fr; } .detail-header, .detail-section { padding: 20px; } }
+  .detail-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 16px; padding: 16px; background: #f8f9fa; border-radius: 8px; }
+  .meta-row { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .meta-label { color: #888; min-width: 70px; }
+  .meta-value { color: #333; font-weight: 500; }
+  .meta-link { display: inline-flex; align-items: center; gap: 4px; color: #667eea; text-decoration: none; font-size: 14px; }
+  .meta-link:hover { text-decoration: underline; }
+  @media (max-width: 768px) { .card-row { grid-template-columns: 1fr; } .detail-header, .detail-section { padding: 20px; } .detail-meta { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -85,9 +87,12 @@
   <div id="detailPage" class="hidden">
     <div class="detail-page">
       <button class="back-btn" onclick="goBackFromDetail()">← 返回列表</button>
+      <div class="detail-header">
+        <div class="detail-title" id="detailTitle"></div>
+        <div class="detail-meta" id="detailMeta"></div>
+      </div>
       <div class="detail-section">
-        <div class="detail-content collapsed" id="detailContent"></div>
-        <button class="expand-btn" id="expandBtn" onclick="toggleExpand()" style="display:none">展开全文 ↓</button>
+        <div class="detail-content" id="detailContent"></div>
       </div>
     </div>
   </div>
@@ -176,35 +181,27 @@ function showDetail(index) {
   document.getElementById('homePage').classList.add('hidden');
   document.getElementById('dataPage').classList.add('hidden');
   document.getElementById('detailPage').classList.remove('hidden');
+  
+  // 渲染标题和元数据
+  document.getElementById('detailTitle').textContent = r.title || '无标题';
+  document.getElementById('detailMeta').innerHTML = `
+    <div class="meta-row"><span class="meta-label">发布时间：</span><span class="meta-value">${esc(r.publish_time||'-')}</span></div>
+    <div class="meta-row"><span class="meta-label">截止时间：</span><span class="meta-value">${esc(r.bid_time||'-')}</span></div>
+    <div class="meta-row"><span class="meta-label">服务地点：</span><span class="meta-value">${esc(r.service_location||'-')}</span></div>
+    <div class="meta-row"><span class="meta-label">预算：</span><span class="meta-value budget">${r.budget ? '¥' + Number(r.budget).toLocaleString('zh-CN', {minimumFractionDigits:2, maximumFractionDigits:2}) : '-'}</span></div>
+    <div class="meta-row"><span class="meta-label">来源：</span><span class="meta-value">${esc(r.source||'-')}</span></div>
+    ${r.url ? `<a href="${esc(r.url)}" target="_blank" class="meta-link" title="查看原文">🔗 原文链接</a>` : ''}
+  `;
+  
   // content 是纯文本，用 textContent 渲染
   const el = document.getElementById('detailContent');
   el.textContent = r.content || '暂无正文内容';
-  el.classList.add('collapsed');
-  const btn = document.getElementById('expandBtn');
-  btn.textContent = '展开全文 ↓';
-  // 等渲染完再判断是否需要展开按钮
-  requestAnimationFrame(() => {
-    btn.style.display = el.scrollHeight > 170 ? 'block' : 'none';
-  });
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function goBackFromDetail() {
   document.getElementById('detailPage').classList.add('hidden');
   document.getElementById('dataPage').classList.remove('hidden');
-}
-
-function toggleExpand() {
-  const el = document.getElementById('detailContent');
-  const btn = document.getElementById('expandBtn');
-  if (el.classList.contains('collapsed')) {
-    el.classList.remove('collapsed');
-    btn.textContent = '收起 ↑';
-  } else {
-    el.classList.add('collapsed');
-    btn.textContent = '展开全文 ↓';
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
 }
 
 function esc(s) {

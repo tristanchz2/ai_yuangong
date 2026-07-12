@@ -38,16 +38,24 @@
   .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
   .toolbar h2 { font-size: 18px; color: #1e3a5f; }
   .toolbar-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-  .site-table { width: 100%; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .site-table { width: 100%; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.06); table-layout: fixed; }
   .site-table th { background: #f8fafc; padding: 12px 14px; text-align: left; font-size: 13px; color: #666; border-bottom: 1px solid #eee; }
-  .site-table td { padding: 12px 14px; font-size: 14px; border-bottom: 1px solid #f0f0f0; }
+  .site-table td { padding: 12px 14px; font-size: 14px; border-bottom: 1px solid #f0f0f0; word-wrap: break-word; overflow-wrap: break-word; }
+  .site-table th:first-child, .site-table td:first-child { width: 50px; }
+  .site-table th:nth-child(2), .site-table td:nth-child(2) { width: 180px; }
+  .site-table th:nth-child(3), .site-table td:nth-child(3) { width: 250px; }
+  .site-table th:nth-child(4), .site-table td:nth-child(4) { width: 100px; }
+  .site-table th:nth-child(5), .site-table td:nth-child(5) { width: 90px; }
+  .site-table th:last-child, .site-table td:last-child { width: 180px; }
+  .site-table .url-cell { max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
   .site-table tr:last-child td { border-bottom: none; }
   .site-table tr:hover { background: #fafbfc; }
   .site-table tr.hidden-row { opacity: 0.5; }
-  .status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; }
+  .status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; white-space: nowrap; }
   .status-active { background: #d1fae5; color: #047857; }
   .status-hidden { background: #fee2e2; color: #b91c1c; }
-  .action-btns { display: flex; gap: 6px; }
+  .action-btns { display: flex; gap: 4px; flex-wrap: nowrap; }
+  .action-btns .btn { padding: 6px 10px; font-size: 12px; white-space: nowrap; }
   .add-form { background: #fff; padding: 24px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.06); display: none; }
   .add-form.active { display: block; }
   .add-form h3 { margin-bottom: 16px; color: #1e3a5f; }
@@ -63,7 +71,7 @@
   .modal-header h3 { font-size: 18px; color: #1e3a5f; }
   .modal-close { width: 32px; height: 32px; border: none; background: #f3f4f6; border-radius: 8px; font-size: 18px; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #666; }
   .modal-close:hover { background: #e5e7eb; }
-  .modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
+  .modal-body { padding: 20px 24px; flex: 1; overflow: hidden; }
 
   /* 统计 */
   .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
@@ -116,10 +124,14 @@
   .site-card.expanded .expand-arrow { transform: rotate(90deg); }
   .site-terminal-wrap { display: none; border-top: 1px solid #eee; }
   .site-card.expanded .site-terminal-wrap { display: block; }
-  .site-terminal { background: #0d1117; color: #c9d1d9; padding: 14px; font-family: 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 12px; line-height: 1.7; max-height: 300px; overflow-y: auto; }
+  .site-terminal { background: #f8f9fa; color: #333333; border: 1px solid #e5e7eb; padding: 14px; font-family: 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 12px; line-height: 1.7; overflow-y: auto; border-radius: 6px; }
   .site-terminal::-webkit-scrollbar { width: 6px; }
   .site-terminal::-webkit-scrollbar-track { background: transparent; }
-  .site-terminal::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+  .site-terminal::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  .log-content { background: #f8f9fa; color: #333333; padding: 14px; font-family: 'Monaco', 'Menlo', 'Consolas', monospace; font-size: 12px; line-height: 1.7; overflow-y: auto; border-radius: 6px; max-height: 400px; }
+  .log-content::-webkit-scrollbar { width: 6px; }
+  .log-content::-webkit-scrollbar-track { background: transparent; }
+  .log-content::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
   .log-line { white-space: pre-wrap; word-break: break-all; }
   .log-line.success { color: #4ade80; }
   .log-line.warning { color: #fbbf24; }
@@ -168,9 +180,7 @@
     <div class="toolbar">
       <h2>网站管理</h2>
       <div class="toolbar-actions">
-        <button class="btn btn-info" id="taskBtn" onclick="openTaskHistory()">
-          <span class="task-dot" id="taskDot" style="display:none"></span>历史任务
-        </button>
+        <button class="btn btn-info" onclick="openTaskModal()">📋 历史任务</button>
         <button class="btn btn-success" onclick="startBatchScrape()">重新爬取昨日数据</button>
         <button class="btn btn-success" onclick="toggleAddForm()">+ 添加网站</button>
         <button class="btn btn-logout" onclick="doLogout()">退出</button>
@@ -204,50 +214,56 @@
 <div class="modal-overlay" id="taskModal">
   <div class="modal">
     <div class="modal-header">
-      <h3>历史任务</h3>
+      <h3>📋 历史任务</h3>
       <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn btn-danger" id="cancelTaskBtn" onclick="cancelTask()" style="display:none">⛔ 终止任务</button>
         <button class="modal-close" onclick="closeTaskModal()">✕</button>
       </div>
     </div>
-    <div class="modal-body" id="taskHistoryBody">
+    <div class="modal-body" id="taskListBody">
       <div class="empty-state">加载中...</div>
     </div>
   </div>
 </div>
 
-<!-- 批量爬取详情弹窗（兼容原有逻辑） -->
-<div class="modal-overlay" id="batchDetailModal">
+<!-- 编辑网站弹窗 -->
+<div class="modal-overlay" id="editModal">
   <div class="modal">
     <div class="modal-header">
-      <h3>批量爬取任务</h3>
+      <h3>编辑网站</h3>
       <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn btn-danger" id="cancelBatchBtn" onclick="cancelBatchTask()" style="display:none">⛔ 终止任务</button>
-        <button class="modal-close" onclick="closeBatchModal()">✕</button>
+        <button class="modal-close" onclick="closeEditModal()">✕</button>
       </div>
     </div>
     <div class="modal-body">
-      <div class="stats-row">
-        <div class="stat-card"><div class="label">总站点</div><div class="value" id="statTotal">0</div></div>
-        <div class="stat-card"><div class="label">已完成</div><div class="value" id="statSuccess" style="color:#059669">0</div></div>
-        <div class="stat-card"><div class="label">进行中</div><div class="value" id="statRunning" style="color:#3b82f6">0</div></div>
-        <div class="stat-card"><div class="label">失败</div><div class="value" id="statFailed" style="color:#dc2626">0</div></div>
-      </div>
-      <div class="overall-progress">
-        <div class="bar"><div class="fill" id="overallFill" style="width:0%"></div></div>
-        <div class="text" id="overallText">0%</div>
-      </div>
-      <div id="siteCards"></div>
+      <form id="editForm">
+        <div class="form-group">
+          <label>网站名称 *</label>
+          <input type="text" id="editName" required>
+        </div>
+        <div class="form-group">
+          <label>网站描述</label>
+          <input type="text" id="editDescription">
+        </div>
+        <div class="form-group">
+          <label>网站URL（不可修改）</label>
+          <input type="text" id="editUrl" readonly style="background:#f5f5f5;">
+        </div>
+        <div class="form-group">
+          <label>爬虫名称（不可修改）</label>
+          <input type="text" id="editScraperName" readonly style="background:#f5f5f5;">
+        </div>
+        <div style="display:flex;gap:10px;margin-top:20px;">
+          <button type="button" class="btn btn-success" onclick="saveSite()">保存</button>
+          <button type="button" class="btn btn-cancel" onclick="closeEditModal()">取消</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
 
 <script>
 let adminToken = '';
-let currentBatchTaskId = null;
 let pollTimer = null;
-let lastTaskData = null;
-let expandedSites = new Set();
 let expandedTasks = new Set();
 
 const STATUS_LABELS = { idle:'等待中', pending:'等待中', running:'运行中', scraping:'爬虫执行中', llm_waiting:'LLM等待中', llm_extracting:'LLM提取中', completed:'已完成', success:'成功', failed:'失败', cancelled:'已终止' };
@@ -266,7 +282,7 @@ async function doLogin() {
     document.getElementById('loginPage').style.display = 'none';
     document.getElementById('adminPanel').classList.add('active');
     loadSites();
-    checkExistingTask();
+    loadTaskHistory();
   } catch (e) { errEl.textContent = '网络错误: ' + e.message; }
 }
 
@@ -296,7 +312,15 @@ function renderSites(sites) {
     const statusText = isHidden ? '已隐藏' : '运行中';
     const rowClass = isHidden ? 'hidden-row' : '';
     const hideBtn = isHidden ? `<button class="btn btn-warning" onclick="unhideSite(${s.id})">显示</button>` : `<button class="btn btn-warning" onclick="hideSite(${s.id})">隐藏</button>`;
-    html += `<tr class="${rowClass}"><td>${s.id}</td><td><strong>${esc(s.name)}</strong><br><small style="color:#888">${esc(s.description||'')}</small></td><td><a href="${esc(s.url)}" target="_blank" style="color:#2563eb">${esc(s.url)}</a></td><td><code>${esc(s.scraper_name||'-')}</code></td><td><span class="status-badge ${statusClass}">${statusText}</span></td><td><div class="action-btns">${hideBtn}<button class="btn btn-danger" onclick="deleteSite(${s.id}, '${esc(s.name)}')">删除</button></div></td></tr>`;
+    const editBtn = `<button class="btn btn-info" onclick="openEditModal(${s.id})">编辑</button>`;
+    html += `<tr class="${rowClass}">
+    <td>${s.id}</td>
+    <td><strong>${esc(s.name)}</strong><br><small style="color:#888">${esc(s.description||'')}</small></td>
+    <td><a href="${esc(s.url)}" target="_blank" class="url-cell" title="${esc(s.url)}" style="color:#2563eb">${esc(s.url)}</a></td>
+    <td><code>${esc(s.scraper_name||'-')}</code></td>
+    <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+    <td><div class="action-btns">${editBtn}${hideBtn}<button class="btn btn-danger" onclick="deleteSite(${s.id}, '${esc(s.name)}')">删除</button></div></td>
+  </tr>`;
   }
   html += '</tbody></table>';
   document.getElementById('siteList').innerHTML = html;
@@ -369,6 +393,7 @@ async function addSite() {
     toggleAddForm();
     ['siteName','siteUrl','siteScraper','siteDesc'].forEach(id => document.getElementById(id).value = '');
     loadSites();
+    loadTaskHistory();
   } catch (e) { alert('网络错误: ' + e.message); }
 }
 
@@ -385,11 +410,11 @@ async function deleteSite(id, name) {
   } catch (e) { alert('网络错误'); }
 }
 
-// ============ 历史任务 ============
+// ============ 统一任务列表 ============
 
-async function openTaskHistory() {
+function openTaskModal() {
   document.getElementById('taskModal').classList.add('active');
-  await loadTaskHistory();
+  loadTaskHistory();
 }
 
 function closeTaskModal() {
@@ -397,17 +422,34 @@ function closeTaskModal() {
   expandedTasks.clear();
 }
 
+// 点击 modal 外部关闭
+document.getElementById('taskModal').addEventListener('click', function(e) {
+  if (e.target === this) closeTaskModal();
+});
+
 async function loadTaskHistory() {
   try {
     const resp = await fetch('/api/admin/tasks', { headers: { 'X-Admin-Token': adminToken } });
-    if (!resp.ok) { document.getElementById('taskHistoryBody').innerHTML = '<div class="empty-state" style="color:#dc2626">加载失败</div>'; return; }
+    if (!resp.ok) { document.getElementById('taskListBody').innerHTML = '<div class="empty-state" style="color:#dc2626">加载失败</div>'; return; }
     const data = await resp.json();
     renderTaskHistory(data.tasks || []);
-  } catch (e) { document.getElementById('taskHistoryBody').innerHTML = '<div class="empty-state" style="color:#dc2626">网络错误</div>'; }
+    
+    // 如果有 running 的任务，启动轮询
+    const hasRunning = (data.tasks || []).some(t => t.status === 'running');
+    if (hasRunning) {
+      startPolling();
+    } else {
+      stopPolling();
+    }
+  } catch (e) { document.getElementById('taskListBody').innerHTML = '<div class="empty-state" style="color:#dc2626">网络错误</div>'; }
 }
 
 function renderTaskHistory(tasks) {
-  if (tasks.length === 0) { document.getElementById('taskHistoryBody').innerHTML = '<div class="empty-state">暂无历史任务</div>'; return; }
+  if (tasks.length === 0) { 
+    document.getElementById('taskListBody').innerHTML = '<div class="empty-state">暂无历史任务</div>'; 
+    return; 
+  }
+  
   let html = '';
   for (const t of tasks) {
     const isExpanded = expandedTasks.has(t.task_id);
@@ -420,32 +462,9 @@ function renderTaskHistory(tasks) {
     const createdTime = t.created_at ? new Date(t.created_at * 1000).toLocaleString('zh-CN') : '未知';
     const duration = t.duration ? `${Math.round(t.duration)}s` : '-';
     const meta = `${createdTime} | 耗时: ${duration}`;
-    const details = t.details || {};
-    
-    // 构建终端内容
-    let terminalContent = '';
-    if (t.type === 'batch_scrape') {
-      const sites = details.sites || [];
-      for (const s of sites) {
-        const sStatus = s.status || 'idle';
-        const sLabel = STATUS_LABELS[sStatus] || sStatus;
-        const sMeta = sStatus === 'completed' ? `${s.rows} 条 → 提取 ${s.extracted_rows} 条` : (sStatus === 'failed' ? (s.error || '失败') : sStatus);
-        terminalContent += `<div class="log-line"><strong>${esc(s.site_name)}</strong>: ${sLabel} - ${esc(sMeta)}</div>`;
-        if (s.logs) {
-          for (const log of s.logs.slice(-20)) {
-            terminalContent += `<div class="log-line${logClass(log)}">  ${esc(log)}</div>`;
-          }
-        }
-      }
-    } else if (t.type === 'generate_scraper') {
-      terminalContent += `<div class="log-line">URL: ${esc(details.url || '')}</div>`;
-      terminalContent += `<div class="log-line">爬虫: ${esc(details.scraper_name || '')}</div>`;
-      if (details.error) terminalContent += `<div class="log-line error">错误: ${esc(details.error)}</div>`;
-      if (details.log_preview) terminalContent += `<div class="log-line" style="margin-top:8px;border-top:1px solid #333;padding-top:8px">日志预览:</div>` + details.log_preview.split('\n').map(l => `<div class="log-line${logClass(l)}">${esc(l)}</div>`).join('');
-    }
     
     html += `<div class="task-list-item ${isExpanded ? 'expanded' : ''}" id="task-${t.task_id}">
-      <div class="task-list-header" onclick="toggleTask('${t.task_id}')">
+      <div class="task-list-header" onclick="toggleTask('${t.task_id}', '${t.type}')">
         <div class="task-icon ${typeClass}">${icon}</div>
         <div class="task-info">
           <div class="task-name-row">
@@ -455,32 +474,162 @@ function renderTaskHistory(tasks) {
           </div>
           <div class="task-meta">${meta}</div>
         </div>
+        ${status === 'running' ? `<button class="btn btn-danger" onclick="event.stopPropagation(); cancelTask('${t.task_id}', '${t.type}')" style="margin-right:8px">终止</button>` : ''}
         <span class="expand-arrow">▶</span>
       </div>
       <div class="task-terminal-wrap">
-        <div class="site-terminal" id="terminal-${t.task_id}">${terminalContent || '<div class="log-line">暂无日志</div>'}</div>
+        <div class="site-terminal" id="terminal-${t.task_id}">加载中...</div>
       </div>
     </div>`;
   }
-  document.getElementById('taskHistoryBody').innerHTML = html;
+  document.getElementById('taskListBody').innerHTML = html;
+}
+
+async function toggleTask(taskId, taskType) {
+  const el = document.getElementById('task-' + taskId);
+  if (!el) return;
   
-  // 滚动展开的终端到底部
-  for (const tid of expandedTasks) {
-    const el = document.getElementById('terminal-' + tid);
-    if (el) el.scrollTop = el.scrollHeight;
+  if (expandedTasks.has(taskId)) {
+    expandedTasks.delete(taskId);
+    el.classList.remove('expanded');
+  } else {
+    expandedTasks.add(taskId);
+    el.classList.add('expanded');
+    // 加载详情
+    await loadTaskDetail(taskId, taskType);
   }
 }
 
-function toggleTask(taskId) {
-  if (expandedTasks.has(taskId)) {
-    expandedTasks.delete(taskId);
-  } else {
-    expandedTasks.add(taskId);
+async function loadTaskDetail(taskId, taskType) {
+  const terminal = document.getElementById('terminal-' + taskId);
+  if (!terminal) return;
+  
+  try {
+    if (taskType === 'batch_scrape') {
+      const resp = await fetch(`/api/admin/batch-scrape/${taskId}`, { headers: { 'X-Admin-Token': adminToken } });
+      if (!resp.ok) { terminal.innerHTML = '<div class="log-line error">加载失败</div>'; return; }
+      const data = await resp.json();
+      renderBatchDetail(terminal, data);
+    } else if (taskType === 'generate_scraper') {
+      const resp = await fetch(`/logs/${taskId}`, { headers: { 'X-Admin-Token': adminToken } });
+      if (!resp.ok) { terminal.innerHTML = '<div class="log-line error">加载失败</div>'; return; }
+      const data = await resp.json();
+      renderGenerateDetail(terminal, data);
+    }
+  } catch (e) {
+    terminal.innerHTML = '<div class="log-line error">网络错误</div>';
   }
-  const el = document.getElementById('task-' + taskId);
-  if (el) el.classList.toggle('expanded');
-  const term = document.getElementById('terminal-' + taskId);
-  if (term) setTimeout(() => term.scrollTop = term.scrollHeight, 50);
+}
+
+function renderBatchDetail(container, data) {
+  const sites = data.sites || [];
+  
+  // 顶部统计
+  let html = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+    <div style="text-align:center;padding:12px;background:#f8fafc;border-radius:10px">
+      <div style="font-size:11px;color:#888;margin-bottom:4px">总站点</div>
+      <div style="font-size:20px;font-weight:700;color:#1e3a5f">${data.total_sites}</div>
+    </div>
+    <div style="text-align:center;padding:12px;background:#f8fafc;border-radius:10px">
+      <div style="font-size:11px;color:#888;margin-bottom:4px">已完成</div>
+      <div style="font-size:20px;font-weight:700;color:#059669">${data.success_count}</div>
+    </div>
+    <div style="text-align:center;padding:12px;background:#f8fafc;border-radius:10px">
+      <div style="font-size:11px;color:#888;margin-bottom:4px">进行中</div>
+      <div style="font-size:20px;font-weight:700;color:#3b82f6">${data.running_count}</div>
+    </div>
+    <div style="text-align:center;padding:12px;background:#f8fafc;border-radius:10px">
+      <div style="font-size:11px;color:#888;margin-bottom:4px">失败</div>
+      <div style="font-size:20px;font-weight:700;color:#dc2626">${data.failed_count}</div>
+    </div>
+  </div>`;
+  
+  // 每个站点一个卡片
+  for (const s of sites) {
+    const sStatus = s.status || 'idle';
+    const sLabel = STATUS_LABELS[sStatus] || sStatus;
+    const sIcon = STATUS_ICONS[sStatus] || '⏳';
+    
+    // 状态标签颜色
+    const statusColors = {
+      idle: 'background:#f3f4f6;color:#666',
+      scraping: 'background:#dbeafe;color:#1d4ed8',
+      llm_waiting: 'background:#fef3c7;color:#b45309',
+      llm_extracting: 'background:#ede9fe;color:#6d28d9',
+      completed: 'background:#d1fae5;color:#047857',
+      failed: 'background:#fee2e2;color:#b91c1c'
+    };
+    const statusStyle = statusColors[sStatus] || statusColors.idle;
+    
+    // 站点信息
+    const siteInfo = sStatus === 'completed' 
+      ? `${s.rows} 条 → 提取 ${s.extracted_rows} 条 | ${s.duration}s`
+      : sStatus === 'failed' 
+      ? (s.error || '失败')
+      : sStatus === 'scraping' 
+      ? '爬取中...'
+      : sStatus === 'llm_extracting' 
+      ? `已爬取 ${s.rows} 条，提取中...`
+      : sStatus === 'llm_waiting' 
+      ? `已爬取 ${s.rows} 条，等待LLM`
+      : '';
+    
+    html += `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:8px;overflow:hidden">
+      <div style="display:flex;align-items:center;padding:12px;gap:12px">
+        <div style="width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;background:${statusStyle.split(';')[0]}">
+          ${sIcon}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-weight:600;font-size:13px;color:#1e3a5f">${esc(s.site_name)}</span>
+            <span style="font-size:10px;padding:2px 6px;border-radius:8px;${statusStyle}">${sLabel}</span>
+          </div>
+          <div style="font-size:11px;color:#999;margin-top:2px">${esc(siteInfo)}</div>
+        </div>
+      </div>
+      ${s.logs && s.logs.length > 0 ? `<div class="site-terminal" style="border-top:1px solid #eee;padding:10px;font-size:11px;line-height:1.6;max-height:200px">
+        ${s.logs.slice(-15).map(log => `<div class="log-line${logClass(log)}">${esc(log)}</div>`).join('')}
+      </div>` : ''}
+    </div>`;
+  }
+  
+  container.innerHTML = html;
+  container.scrollTop = container.scrollHeight;
+}
+
+function renderGenerateDetail(container, data) {
+  const log = data.log || '';
+  const lines = log.split('\n');
+  
+  // 直接显示完整的 hermes 对话日志（浅色模式）
+  let html = '<div class="site-terminal" style="padding:12px;max-height:500px">';
+  
+  for (const line of lines) {
+    if (line.trim()) {
+      html += `<div class="log-line${logClass(line)}">${esc(line)}</div>`;
+    } else {
+      html += '<div style="height:4px"></div>';
+    }
+  }
+  
+  html += '</div>';
+  
+  container.innerHTML = html;
+  container.scrollTop = container.scrollHeight;
+}
+
+async function cancelTask(taskId, taskType) {
+  if (!confirm('确定要终止此任务吗？')) return;
+  try {
+    if (taskType === 'batch_scrape') {
+      const resp = await fetch(`/api/admin/batch-scrape/${taskId}/cancel`, { method: 'POST', headers: { 'X-Admin-Token': adminToken } });
+      if (!resp.ok) { const err = await resp.json(); alert(err.detail || '终止失败'); return; }
+    } else if (taskType === 'generate_scraper') {
+      alert('生成爬虫任务暂不支持终止');
+      return;
+    }
+    loadTaskHistory();
+  } catch (e) { alert('网络错误: ' + e.message); }
 }
 
 function logClass(line) {
@@ -492,159 +641,60 @@ function logClass(line) {
 
 // ============ 批量爬取 ============
 
-async function checkExistingTask() {
-  try {
-    const resp = await fetch('/api/admin/batch-scrape/latest', { headers: { 'X-Admin-Token': adminToken } });
-    const data = await resp.json();
-    if (data.task_id && data.status !== 'none') {
-      currentBatchTaskId = data.task_id;
-      lastTaskData = data;
-      showTaskBtn();
-      if (data.status === 'running') startPolling();
-    }
-  } catch (e) {}
-}
-
-function showTaskBtn() {
-  const btn = document.getElementById('taskBtn');
-  btn.style.display = 'inline-flex';
-  const dot = document.getElementById('taskDot');
-  dot.style.display = lastTaskData && lastTaskData.status === 'running' ? 'inline-block' : 'none';
-}
-
 async function startBatchScrape() {
   if (!confirm('确定要重新爬取所有未隐藏网站的昨日数据吗？')) return;
   try {
     const resp = await fetch('/api/admin/batch-scrape?mode=yesterday', { method: 'POST', headers: { 'X-Admin-Token': adminToken } });
     if (!resp.ok) { const err = await resp.json(); alert(err.detail || '启动失败'); return; }
     const data = await resp.json();
-    currentBatchTaskId = data.task_id;
-    expandedSites.clear();
-    startPolling();
-    openBatchDetailModal();
-  } catch (e) { alert('网络错误: ' + e.message); }
-}
-
-function openBatchDetailModal() {
-  document.getElementById('batchDetailModal').classList.add('active');
-  if (lastTaskData) renderBatchUI(lastTaskData);
-}
-function closeBatchModal() { document.getElementById('batchDetailModal').classList.remove('active'); }
-
-async function cancelTask() {
-  if (!currentBatchTaskId) return;
-  if (!confirm('确定要终止当前任务吗？')) return;
-  try {
-    const resp = await fetch(`/api/admin/batch-scrape/${currentBatchTaskId}/cancel`, { method: 'POST', headers: { 'X-Admin-Token': adminToken } });
-    if (!resp.ok) { const err = await resp.json(); alert(err.detail || '终止失败'); return; }
-    await pollBatchStatus();
-  } catch (e) { alert('网络错误: ' + e.message); }
-}
-
-async function cancelBatchTask() {
-  if (!currentBatchTaskId) return;
-  if (!confirm('确定要终止当前批量爬取任务吗？')) return;
-  try {
-    const resp = await fetch(`/api/admin/batch-scrape/${currentBatchTaskId}/cancel`, { method: 'POST', headers: { 'X-Admin-Token': adminToken } });
-    if (!resp.ok) { const err = await resp.json(); alert(err.detail || '终止失败'); return; }
-    await pollBatchStatus();
+    alert(data.message);
+    loadTaskHistory();
   } catch (e) { alert('网络错误: ' + e.message); }
 }
 
 function startPolling() {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(async () => {
-    await pollBatchStatus();
-    // 如果历史任务弹窗打开，也刷新
-    if (document.getElementById('taskModal').classList.contains('active')) {
-      await loadTaskHistory();
+    await loadTaskHistory();
+    // 刷新展开的任务详情
+    for (const taskId of expandedTasks) {
+      const el = document.getElementById('task-' + taskId);
+      if (el) {
+        const taskType = el.querySelector('.task-list-header').getAttribute('onclick').match(/'([^']+)'/)[1];
+        // 重新获取 taskType
+        const match = el.querySelector('.task-list-header').getAttribute('onclick').match(/'([^']+)',\s*'([^']+)'/);
+        if (match) {
+          const type = match[2];
+          
+          // 保存所有展开终端的滚动位置
+          const scrollPositions = new Map();
+          el.querySelectorAll('.site-terminal, .log-content').forEach(term => {
+            const id = term.id || term.dataset.logId;
+            if (id) {
+              scrollPositions.set(id, term.scrollTop);
+            }
+          });
+          
+          await loadTaskDetail(taskId, type);
+          
+          // 恢复滚动位置
+          scrollPositions.forEach((scrollTop, id) => {
+            const term = document.getElementById(id) || document.querySelector(`[data-log-id="${id}"]`);
+            if (term) {
+              term.scrollTop = scrollTop;
+            }
+          });
+        }
+      }
     }
-  }, 2000);
+  }, 3000);
 }
 
-async function pollBatchStatus() {
-  if (!currentBatchTaskId) return;
-  try {
-    const resp = await fetch(`/api/admin/batch-scrape/${currentBatchTaskId}`, { headers: { 'X-Admin-Token': adminToken } });
-    if (resp.status === 401) { doLogout(); return; }
-    const data = await resp.json();
-    lastTaskData = data;
-    showTaskBtn();
-    renderBatchUI(data);
-    if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
-      clearInterval(pollTimer);
-      pollTimer = null;
-      showTaskBtn();
-    }
-  } catch (e) {}
-}
-
-function renderBatchUI(data) {
-  const cancelBtn = document.getElementById('cancelBatchBtn');
-  cancelBtn.style.display = data.status === 'running' ? 'inline-block' : 'none';
-
-  const sites = data.sites || [];
-  document.getElementById('statTotal').textContent = data.total_sites || 0;
-  document.getElementById('statSuccess').textContent = data.success_count || 0;
-  document.getElementById('statRunning').textContent = data.running_count || 0;
-  document.getElementById('statFailed').textContent = data.failed_count || 0;
-  document.getElementById('overallFill').style.width = (data.progress_percent || 0) + '%';
-  document.getElementById('overallText').textContent = `${data.completed_sites || 0}/${data.total_sites || 0} (${data.progress_percent || 0}%)`;
-
-  const container = document.getElementById('siteCards');
-  let html = '';
-  for (const s of sites) {
-    const isExpanded = expandedSites.has(s.site_id);
-    const status = s.status || 'idle';
-    const label = STATUS_LABELS[status] || status;
-    const icon = STATUS_ICONS[status] || '⏳';
-    const meta = status === 'completed' ? `${s.rows} 条 → 提取 ${s.extracted_rows} 条 | ${s.duration}s`
-      : status === 'failed' ? (s.error || '失败')
-      : status === 'scraping' ? `爬取中...`
-      : status === 'llm_extracting' ? `已爬取 ${s.rows} 条，提取中...`
-      : status === 'llm_waiting' ? `已爬取 ${s.rows} 条，等待LLM`
-      : '';
-
-    html += `<div class="site-card ${isExpanded ? 'expanded' : ''}" id="card-${s.site_id}">
-      <div class="site-card-header" onclick="toggleSiteCard(${s.site_id})">
-        <div class="site-icon ${status}">${icon}</div>
-        <div class="site-info">
-          <div class="site-name-row">
-            <span class="name">${esc(s.site_name)}</span>
-            <span class="status-tag ${status}">${label}</span>
-          </div>
-          <div class="site-progress-row">
-            <div class="site-progress-bar"><div class="site-progress-fill ${status}"></div></div>
-          </div>
-          <div class="site-meta">${esc(meta)}</div>
-        </div>
-        <span class="expand-arrow">▶</span>
-      </div>
-      <div class="site-terminal-wrap">
-        <div class="site-terminal" id="terminal-${s.site_id}">
-          ${(s.logs || []).map(l => `<div class="log-line${logClass(l)}">${esc(l)}</div>`).join('')}
-        </div>
-      </div>
-    </div>`;
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
   }
-  container.innerHTML = html;
-
-  for (const sid of expandedSites) {
-    const el = document.getElementById('terminal-' + sid);
-    if (el) el.scrollTop = el.scrollHeight;
-  }
-}
-
-function toggleSiteCard(siteId) {
-  if (expandedSites.has(siteId)) {
-    expandedSites.delete(siteId);
-  } else {
-    expandedSites.add(siteId);
-  }
-  const card = document.getElementById('card-' + siteId);
-  if (card) card.classList.toggle('expanded');
-  const el = document.getElementById('terminal-' + siteId);
-  if (el) setTimeout(() => el.scrollTop = el.scrollHeight, 50);
 }
 
 function esc(s) {
@@ -654,11 +704,80 @@ function esc(s) {
   return d.innerHTML;
 }
 
-document.getElementById('taskModal').addEventListener('click', function(e) {
-  if (e.target === this) closeTaskModal();
-});
-document.getElementById('batchDetailModal').addEventListener('click', function(e) {
-  if (e.target === this) closeBatchModal();
+// ============ 编辑网站 ============
+
+async function openEditModal(siteId) {
+  // 获取网站信息
+  try {
+    const resp = await fetch(`/api/admin/sites`, { headers: { 'X-Admin-Token': adminToken } });
+    if (!resp.ok) { alert('加载失败'); return; }
+    const sites = await resp.json();
+    const site = sites.find(s => s.id === siteId);
+    
+    if (!site) { alert('网站不存在'); return; }
+    
+    // 填充表单
+    document.getElementById('editName').value = site.name || '';
+    document.getElementById('editDescription').value = site.description || '';
+    document.getElementById('editUrl').value = site.url || '';
+    document.getElementById('editScraperName').value = site.scraper_name || '';
+    
+    // 存储网站ID
+    document.getElementById('editForm').dataset.siteId = siteId;
+    
+    // 显示模态框
+    document.getElementById('editModal').classList.add('active');
+  } catch (e) {
+    alert('网络错误: ' + e.message);
+  }
+}
+
+function closeEditModal() {
+  document.getElementById('editModal').classList.remove('active');
+  document.getElementById('editForm').reset();
+  delete document.getElementById('editForm').dataset.siteId;
+}
+
+async function saveSite() {
+  const siteId = document.getElementById('editForm').dataset.siteId;
+  const name = document.getElementById('editName').value.trim();
+  const description = document.getElementById('editDescription').value.trim();
+  
+  if (!name) {
+    alert('网站名称不能为空');
+    return;
+  }
+  
+  try {
+    const resp = await fetch(`/api/admin/sites/${siteId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Admin-Token': adminToken
+      },
+      body: JSON.stringify({
+        name: name,
+        description: description
+      })
+    });
+    
+    if (!resp.ok) {
+      const err = await resp.json();
+      alert(err.detail || '更新失败');
+      return;
+    }
+    
+    alert('网站已更新');
+    closeEditModal();
+    loadSites();
+  } catch (e) {
+    alert('网络错误: ' + e.message);
+  }
+}
+
+// 点击编辑模态框外部关闭
+document.getElementById('editModal').addEventListener('click', function(e) {
+  if (e.target === this) closeEditModal();
 });
 </script>
 </body>
