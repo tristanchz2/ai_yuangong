@@ -42,6 +42,16 @@
   .pagination button:hover:not(:disabled) { background: #667eea; color: #fff; border-color: #667eea; }
   .pagination button:disabled { opacity: .4; cursor: default; }
   .pagination .page-info { font-size: 14px; color: #555; min-width: 100px; text-align: center; }
+  .pagination .page-jump { display: flex; align-items: center; gap: 6px; margin-left: 12px; font-size: 14px; color: #555; }
+  .pagination .page-jump input { width: 52px; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; text-align: center; outline: none; }
+  .pagination .page-jump input:focus { border-color: #667eea; }
+  .pagination .page-jump button { padding: 6px 12px; }
+  .pagination .page-numbers { display: flex; gap: 4px; }
+  .pagination .page-numbers button { min-width: 36px; padding: 6px 10px; font-size: 13px; }
+  .pagination .page-numbers button.active { background: #667eea; color: #fff; border-color: #667eea; }
+  .back-to-top { position: fixed; right: 32px; bottom: 32px; width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; font-size: 20px; cursor: pointer; box-shadow: 0 4px 12px rgba(102,126,234,.4); display: flex; align-items: center; justify-content: center; opacity: 0; visibility: hidden; transition: all 0.3s; z-index: 999; }
+  .back-to-top.visible { opacity: 1; visibility: visible; }
+  .back-to-top:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(102,126,234,.5); }
   .loading { text-align: center; padding: 60px; font-size: 16px; color: #888; }
   .hidden { display: none; }
   .detail-page { max-width: 900px; margin: 0 auto; }
@@ -79,9 +89,17 @@
     <div class="page-meta" id="dataPageMeta"></div>
     <div id="cardContainer"></div>
     <div class="pagination" id="pagination" style="display:none">
+      <button id="firstBtn" onclick="goPage(1)">首页</button>
       <button id="prevBtn" onclick="goPage(currentPage-1)">上一页</button>
-      <span class="page-info" id="pageInfo"></span>
+      <div class="page-numbers" id="pageNumbers"></div>
       <button id="nextBtn" onclick="goPage(currentPage+1)">下一页</button>
+      <button id="lastBtn" onclick="goPage(totalPages)">末页</button>
+      <span class="page-info" id="pageInfo"></span>
+      <div class="page-jump">
+        <span>跳至</span>
+        <input type="number" id="jumpInput" min="1" onkeydown="if(event.key==='Enter')doJump()">
+        <button onclick="doJump()">GO</button>
+      </div>
     </div>
   </div>
   <div id="detailPage" class="hidden">
@@ -97,6 +115,7 @@
     </div>
   </div>
 </div>
+<button class="back-to-top" id="backToTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">↑</button>
 <script>
 const PER_PAGE = 8;
 const ICONS = { "采购公告": "📋", "结果公告": "✅", "其他": "📁" };
@@ -148,9 +167,11 @@ function showHome() {
   loadCategories();
 }
 
+let totalPages = 1;
+
 function renderCards() {
   const total = allRecords.length;
-  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+  totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
   if (currentPage > totalPages) currentPage = totalPages;
   const start = (currentPage - 1) * PER_PAGE;
   const pageRecords = allRecords.slice(start, start + PER_PAGE);
@@ -165,14 +186,40 @@ function renderCards() {
   document.getElementById('pageInfo').textContent = `${currentPage} / ${totalPages}`;
   document.getElementById('prevBtn').disabled = currentPage <= 1;
   document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+  document.getElementById('firstBtn').disabled = currentPage <= 1;
+  document.getElementById('lastBtn').disabled = currentPage >= totalPages;
+  // 渲染页码按钮
+  const pnContainer = document.getElementById('pageNumbers');
+  let pnHtml = '';
+  const maxVisible = 5;
+  let startP = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+  let endP = Math.min(totalPages, startP + maxVisible - 1);
+  if (endP - startP < maxVisible - 1) startP = Math.max(1, endP - maxVisible + 1);
+  if (startP > 1) pnHtml += `<button onclick="goPage(1)">1</button><span style="color:#999">...</span>`;
+  for (let i = startP; i <= endP; i++) {
+    pnHtml += `<button class="${i === currentPage ? 'active' : ''}" onclick="goPage(${i})">${i}</button>`;
+  }
+  if (endP < totalPages) pnHtml += `<span style="color:#999">...</span><button onclick="goPage(${totalPages})">${totalPages}</button>`;
+  pnContainer.innerHTML = pnHtml;
 }
 
 function goPage(p) {
-  const totalPages = Math.ceil(allRecords.length / PER_PAGE);
   if (p < 1 || p > totalPages) return;
   currentPage = p;
   renderCards();
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function doJump() {
+  const input = document.getElementById('jumpInput');
+  const p = parseInt(input.value);
+  if (p >= 1 && p <= totalPages) {
+    goPage(p);
+    input.value = '';
+  } else {
+    input.style.borderColor = '#dc2626';
+    setTimeout(() => input.style.borderColor = '#d1d5db', 1000);
+  }
 }
 
 function showDetail(index) {
@@ -210,6 +257,16 @@ function esc(s) {
   d.textContent = s;
   return d.innerHTML;
 }
+
+// 回到顶部按钮显隐
+window.addEventListener('scroll', () => {
+  const btn = document.getElementById('backToTop');
+  if (window.scrollY > 300) {
+    btn.classList.add('visible');
+  } else {
+    btn.classList.remove('visible');
+  }
+});
 
 loadCategories();
 </script>

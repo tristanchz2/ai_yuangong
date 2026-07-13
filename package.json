@@ -20,6 +20,8 @@
   "homepage": "https://github.com/tristanchz2/ai_yuangong#readme",
   "dependencies": {
     "cycletls": "^2.0.5",
-    "playwright": "^1.61.1"
+    "playwright": "^1.61.1",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }

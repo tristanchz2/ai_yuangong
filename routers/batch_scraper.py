@@ -498,18 +498,18 @@ async def _run_field_extraction(task: BatchScraperTask, st: SiteTask) -> bool:
 
 
 def _count_extracted_records(source: str) -> int:
-    """统计指定源在 extracted_data 中的记录数"""
+    """统计指定源在 extracted_data 中的记录数（新结构: extracted_data/{notice_type}/{source}/）"""
     try:
         extracted_dir = PROJECT_ROOT / "extracted_data"
         total = 0
         for folder in ["采购公告", "结果公告", "其他"]:
-            folder_path = extracted_dir / folder
-            if folder_path.exists():
-                for f in folder_path.glob("*.json"):
+            # 新结构: extracted_data/{notice_type}/{source}/*.json
+            source_dir = extracted_dir / folder / source
+            if source_dir.exists():
+                for f in source_dir.glob("*.json"):
                     with open(f, "r", encoding="utf-8") as fh:
                         data = json.load(fh)
-                        records = data.get("records", [])
-                        total += sum(1 for r in records if r.get("source") == source)
+                        total += data.get("totalRecords", 0)
         return total
     except Exception:
         return 0

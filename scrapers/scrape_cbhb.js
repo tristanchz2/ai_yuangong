@@ -219,7 +219,7 @@ async function main() {
   while (page <= maxPages) {
     const pageUrl = page === 1 
       ? `${BASE_URL}/cms/channel/ywgg1qb/index.htm`
-      : `${BASE_URL}/cms/channel/ywgg1qb/index_${page}.htm`;
+      : `${BASE_URL}/cms/channel/ywgg1qb/index.htm?pageNo=${page}`;
     
     console.log(`  第 ${page} 页: ${pageUrl}`);
     
@@ -239,9 +239,17 @@ async function main() {
     console.log(`    ✓ 获取 ${items.length} 条 (总计: ${allItems.length})`);
     
     // 如果是日期模式，检查是否已经找到目标日期
-    if (mode === 'date' && items.some(item => item.date === targetDate)) {
-      console.log(`    ✓ 已找到目标日期 ${targetDate} 的数据`);
-      break;
+    if (mode === 'date') {
+      // 网站严格按日期倒序排列，如果当前页最新日期已早于目标日期，无需继续翻页
+      const newestDate = items[0].date;
+      if (newestDate && newestDate < targetDate) {
+        console.log(`    ⚠ 当前页最新日期 ${newestDate} 已早于目标日期 ${targetDate}，停止翻页`);
+        break;
+      }
+      if (items.some(item => item.date === targetDate)) {
+        console.log(`    ✓ 已找到目标日期 ${targetDate} 的数据`);
+        break;
+      }
     }
     
     // 如果获取的数据已经足够

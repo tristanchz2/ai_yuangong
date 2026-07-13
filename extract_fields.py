@@ -65,7 +65,7 @@ class ExtractedFields(BaseModel):
     )
     notice_type: Optional[int] = Field(
         default=None,
-        description="公告类型分类：0=采购/招标类公告（招标公告、采购公告、竞争性磋商、单一来源、征集、更正等），1=结果类公告（中标公告、成交公告、结果公告、评标结果等），2=其他/无法判断"
+        description="公告类型分类（请先判断是否为招标/采购相关文档）：0=采购/招标类公告（招标公告、采购公告、竞争性磋商、单一来源、征集、更正等），1=结果类公告（中标公告、成交公告、结果公告、评标结果等），2=其他/非招标采购文档（如新闻、制度、通知、公告栏、供应商征集等非具体招标/采购项目的文档）。注意：数据来源涵盖多种银行采购平台，其中可能混有非标书类公告，请务必根据正文内容判断，非标书类直接归为2，其余字段可填null"
     )
     publish_time: Optional[str] = Field(
         default=None,
@@ -164,6 +164,11 @@ def file_lock(lock_path: Path, timeout: float = 30.0):
             except Exception:
                 pass
         lock_file.close()
+        # 锁释放后清理锁文件，避免残留
+        try:
+            lock_path.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 # ──────────────────────────────────────────────
 # 省份后处理：LLM 可能输出 "福建省"/"北京市" 等，统一修正为枚举值
@@ -334,7 +339,8 @@ async def extract_batch(
 
     # 构建批量 prompt
     prompt_parts = [
-        f"以下是 {len(batch)} 条招标/采购公告，请逐条提取结构化信息。",
+        f"以下是 {len(batch)} 条公告，请逐条提取结构化信息。",
+        f"\n⚠️ 重要：数据来源为多个银行/机构采购平台，其中可能包含非招标采购类文档（如新闻动态、内部制度、供应商征集公告、系统通知等）。请先判断每条文档是否为具体的招标/采购/中标类公告：如果不是，notice_type 直接填 2，其余字段可填 null，无需强行提取。",
         f"\n需要提取的字段及说明：\n{schema_desc}",
         "\n输出格式：JSON 对象，包含一个 'results' 数组，每个元素对应一条公告，顺序必须与输入一致。",
         "如果某字段找不到，填 null。只输出 JSON，不要输出其他内容。",
@@ -361,7 +367,7 @@ async def extract_batch(
                     messages=[
                         {
                             "role": "system",
-                            "content": "你是一个专业的招标公告信息提取助手。请严格按照要求的 JSON 格式输出提取结果。只输出 JSON，不要输出其他内容。",
+                            "content": "你是一个专业的公告信息提取助手。数据来源包含多个银行/机构采购平台，其中既有招标/采购/中标类公告，也可能混有新闻、制度、通知等非招标类文档。请根据正文内容判断文档类型，非招标采购类文档的 notice_type 填 2，其余字段填 null。请严格按照要求的 JSON 格式输出。只输出 JSON，不要输出其他内容。",
                         },
                         {"role": "user", "content": prompt},
                     ],
@@ -471,12 +477,16 @@ async def process_file(
         extracted["service_province"] = normalize_province(extracted.get("service_province"))
         # 预算转纯数字
         extracted["budget"] = normalize_budget(extracted.get("budget"))
-        # 公告类型：优先用 raw_data 已有的 noticeType，否则用 LLM 输出的数字映射，最后 fallback 到标题推断
+        # 公告类型：LLM 判断优先——如果 LLM 判定为非标书(2)，直接尊重；否则优先用 raw_data 的 noticeType，再 fallback 到 LLM 数字映射，最后标题推断
+        llm_notice = _map_notice_code(extracted.get("notice_type")) if extracted.get("notice_type") is not None else None
         raw_notice = row.get("noticeType") or row.get("bidType") or row.get("method")
-        if raw_notice:
+        if llm_notice == "其他":
+            # LLM 读了正文后认为不是招标/采购/中标类文档，尊重其判断
+            extracted["notice_type"] = "其他"
+        elif raw_notice:
             extracted["notice_type"] = _map_raw_noticeType(raw_notice)
-        elif extracted.get("notice_type") is not None:
-            extracted["notice_type"] = _map_notice_code(extracted["notice_type"])
+        elif llm_notice:
+            extracted["notice_type"] = llm_notice
         else:
             extracted["notice_type"] = infer_notice_type(extracted.get("title", ""))
         # 从 raw_data 平移 url 和 content
@@ -593,17 +603,9 @@ async def async_main():
 
     elapsed = time.time() - start_time
 
-    # 按 notice_type 分组保存到不同文件夹
-    folders = {
-        "采购公告": OUTPUT_DIR / "采购公告",
-        "结果公告": OUTPUT_DIR / "结果公告",
-        "其他": OUTPUT_DIR / "其他",
-    }
-    for folder in folders.values():
-        folder.mkdir(parents=True, exist_ok=True)
-
-    # 按数据的发布日期（publishTime）分组，而不是爬虫运行时间
-    date_groups = {}  # {date_str: {notice_type: [records]}}
+    # 按 (notice_type, source, date) 分组，每个源独立目录，不做跨源合并
+    # 结构: {date_str: {source: {notice_type: [records]}}}
+    date_groups = {}
     for r in all_results:
         # 优先用 raw_publish_time（数据实际发布日期），fallback 到 scrape_time
         raw_pt = (r.get("raw_publish_time") or "")[:10]
@@ -616,18 +618,12 @@ async def async_main():
         nt = r.get("notice_type", "其他")
         if nt not in ("采购公告", "结果公告", "其他"):
             nt = "其他"
+        source = r.get("source", "未知源")
         if data_date not in date_groups:
-            date_groups[data_date] = {"采购公告": [], "结果公告": [], "其他": []}
-        date_groups[data_date][nt].append(r)
-
-    # 保存到对应文件夹，按日期合并（同一天同一类型合并，不同天保留）
-    folders = {
-        "采购公告": OUTPUT_DIR / "采购公告",
-        "结果公告": OUTPUT_DIR / "结果公告",
-        "其他": OUTPUT_DIR / "其他",
-    }
-    for folder in folders.values():
-        folder.mkdir(parents=True, exist_ok=True)
+            date_groups[data_date] = {}
+        if source not in date_groups[data_date]:
+            date_groups[data_date][source] = {"采购公告": [], "结果公告": [], "其他": []}
+        date_groups[data_date][source][nt].append(r)
 
     # ── 写入前检查取消信号（统一用 _is_cancelled）──
     if _is_cancelled():
@@ -635,57 +631,45 @@ async def async_main():
         return
 
     saved_count = 0
-    for date_str, type_groups in date_groups.items():
-        for notice_type, new_records in type_groups.items():
-            if not new_records:
-                continue
-            # 每个文件写入前都检查取消信号
-            if _is_cancelled():
-                print(f"\n🛑 检测到取消信号，停止写入（已保存 {saved_count} 条）")
-                break
-            folder = folders[notice_type]
-            output_path = folder / f"{date_str}.json"
+    for date_str, source_groups in date_groups.items():
+        for source, type_groups in source_groups.items():
+            for notice_type, new_records in type_groups.items():
+                if not new_records:
+                    continue
+                # 每个文件写入前都检查取消信号
+                if _is_cancelled():
+                    print(f"\n🛑 检测到取消信号，停止写入（已保存 {saved_count} 条）")
+                    break
+                # 每个源独立子目录，不做跨源合并
+                folder = OUTPUT_DIR / notice_type / source
+                folder.mkdir(parents=True, exist_ok=True)
+                output_path = folder / f"{date_str}.json"
 
-            # 用文件锁保证并发安全（带超时 + 确保释放）
-            lock_path = folder / f".{date_str}_{notice_type}.lock"
-            try:
-                with file_lock(lock_path, timeout=30.0):
-                    # 读取已有数据
-                    existing_records = []
-                    if output_path.exists():
-                        try:
-                            with open(output_path, "r", encoding="utf-8") as f:
-                                old_data = json.load(f)
-                                existing_records = old_data.get("records", [])
-                        except Exception:
-                            existing_records = []
-
-                    # 提取本次新数据的源列表
-                    new_sources = set(r.get("source", "") for r in new_records)
-
-                    # 保留来自不同源的旧数据，替换同源旧数据
-                    kept_old = [r for r in existing_records if r.get("source", "") not in new_sources]
-                    merged = kept_old + new_records
-
-                    with open(output_path, "w", encoding="utf-8") as f:
-                        json.dump(
-                            {
-                                "extractedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                                "scrapeDate": date_str,
-                                "noticeType": notice_type,
-                                "totalRecords": len(merged),
-                                "records": merged,
-                            },
-                            f,
-                            ensure_ascii=False,
-                            indent=2,
-                        )
-                    saved_count += len(new_records)
-                    print(f"  📁 {notice_type} ({date_str}): 新增 {len(new_records)} 条，合并后共 {len(merged)} 条 -> {output_path.name}")
-            except TimeoutError as e:
-                print(f"  ⚠️ {notice_type} ({date_str}): {e}，跳过写入")
-            except Exception as e:
-                print(f"  ❌ {notice_type} ({date_str}): 写入失败 - {e}")
+                # 用文件锁保证并发安全（带超时 + 确保释放）
+                lock_path = folder / f".{date_str}_{notice_type}.lock"
+                try:
+                    with file_lock(lock_path, timeout=30.0):
+                        # 同源覆盖，直接写入（不再合并其他源的数据）
+                        with open(output_path, "w", encoding="utf-8") as f:
+                            json.dump(
+                                {
+                                    "extractedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                                    "scrapeDate": date_str,
+                                    "noticeType": notice_type,
+                                    "source": source,
+                                    "totalRecords": len(new_records),
+                                    "records": new_records,
+                                },
+                                f,
+                                ensure_ascii=False,
+                                indent=2,
+                            )
+                        saved_count += len(new_records)
+                        print(f"  📁 {notice_type}/{source} ({date_str}): 保存 {len(new_records)} 条 -> {output_path}")
+                except TimeoutError as e:
+                    print(f"  ⚠️ {notice_type}/{source} ({date_str}): {e}，跳过写入")
+                except Exception as e:
+                    print(f"  ❌ {notice_type}/{source} ({date_str}): 写入失败 - {e}")
 
     print(f"\n✅ 提取完成！共 {saved_count} 条记录")
     print(f"📂 输出目录: {OUTPUT_DIR}")

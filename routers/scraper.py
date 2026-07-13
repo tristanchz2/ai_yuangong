@@ -184,23 +184,52 @@ async def run_hermes_generate(task_id: str, url: str, custom_name: Optional[str]
         )
         assert process.stdout is not None
 
+        # 总绝对超时：从任务开始算起最多 30 分钟
+        ABSOLUTE_TIMEOUT = 1800  # 秒
+        # 无输出超时：如果连续 5 分钟没有新输出，认为进程 hang
+        IDLE_TIMEOUT = 300  # 秒
+        last_output_time = time.time()
+
         with open(log_file, 'w', encoding='utf-8') as f:
             while True:
-                try:
-                    line = await asyncio.wait_for(process.stdout.readline(), timeout=900.0)
-                    if not line:
-                        # stdout EOF: 直接退出循环，不再依赖 returncode
-                        break
-                    f.write(line.decode('utf-8', errors='replace'))
-                    f.flush()
-                except asyncio.TimeoutError:
+                # 检查总绝对超时
+                elapsed = time.time() - task['started_at']
+                if elapsed > ABSOLUTE_TIMEOUT:
                     task['status'] = 'failed'
-                    task['error'] = 'Hermes 执行超时（>15分钟）'
+                    task['error'] = f'Hermes 执行超时（总耗时 {elapsed:.0f}s > {ABSOLUTE_TIMEOUT}s）'
                     task['finished_at'] = time.time()
                     task['duration'] = task['finished_at'] - task['started_at']
                     process.kill()
                     await process.wait()
                     return
+
+                # 计算距离上次输出的空闲时间
+                idle_elapsed = time.time() - last_output_time
+                remaining_idle = IDLE_TIMEOUT - idle_elapsed
+                read_timeout = max(min(remaining_idle, 60.0), 5.0)
+
+                try:
+                    line = await asyncio.wait_for(process.stdout.readline(), timeout=read_timeout)
+                    if not line:
+                        # stdout EOF: 直接退出循环，不再依赖 returncode
+                        break
+                    f.write(line.decode('utf-8', errors='replace'))
+                    f.flush()
+                    last_output_time = time.time()
+                except asyncio.TimeoutError:
+                    # 检查是否是空闲超时
+                    if time.time() - last_output_time >= IDLE_TIMEOUT:
+                        task['status'] = 'failed'
+                        task['error'] = f'Hermes 进程无新输出超过 {IDLE_TIMEOUT}s，疑似 hang'
+                        task['finished_at'] = time.time()
+                        task['duration'] = task['finished_at'] - task['started_at']
+                        process.kill()
+                        await process.wait()
+                        return
+                    # 否则只是单次 readline 超时，继续等
+                    if process.returncode is not None:
+                        break
+                    continue
                 except Exception:
                     if process.returncode is not None:
                         break

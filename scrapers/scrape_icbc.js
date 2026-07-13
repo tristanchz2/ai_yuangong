@@ -258,7 +258,7 @@ async function main() {
 
     if (!result || !result.rows || result.rows.length === 0) {
       console.log('  无数据');
-      saveOutput([]);
+      new JsonWriter(OUTPUT_JSON, { source: '工银集采', scrapeTime: formatScrapeTime() });
       return;
     }
 
@@ -275,7 +275,7 @@ async function main() {
 
     if (!result || !result.rows || result.rows.length === 0) {
       console.log('  无数据');
-      saveOutput([]);
+      new JsonWriter(OUTPUT_JSON, { source: '工银集采', scrapeTime: formatScrapeTime() });
       return;
     }
 

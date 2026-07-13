@@ -20,7 +20,8 @@ async def get_categories():
     for cat in DATA_CATEGORIES:
         cat_dir = EXTRACTED_DATA_DIR / cat
         if cat_dir.exists() and cat_dir.is_dir():
-            json_files = list(cat_dir.glob("*.json"))
+            # 递归扫描所有源子目录下的 JSON 文件
+            json_files = list(cat_dir.rglob("*.json"))
             total_records = 0
             latest_time = None
             for jf in json_files:
@@ -33,9 +34,14 @@ async def get_categories():
                             latest_time = ext_time
                 except Exception:
                     pass
+            # 统计源数量（子目录数 + 根目录下的文件）
+            source_count = len([d for d in cat_dir.iterdir() if d.is_dir() and not d.name.startswith('.')])
+            if source_count == 0:
+                # 兼容旧结构：没有子目录，按文件数算
+                source_count = len([f for f in cat_dir.glob("*.json")])
             categories.append({
                 "name": cat,
-                "fileCount": len(json_files),
+                "fileCount": source_count,
                 "totalRecords": total_records,
                 "latestExtractedAt": latest_time
             })
@@ -44,7 +50,7 @@ async def get_categories():
 
 @router.get("/data/{category}")
 async def get_category_data(category: str):
-    """读取指定分类的所有 JSON 数据"""
+    """读取指定分类的所有 JSON 数据（递归扫描所有源子目录）"""
     if category not in DATA_CATEGORIES:
         raise HTTPException(status_code=404, detail=f"分类不存在: {category}")
     cat_dir = EXTRACTED_DATA_DIR / category
@@ -52,7 +58,8 @@ async def get_category_data(category: str):
         raise HTTPException(status_code=404, detail="分类目录不存在")
 
     all_records = []
-    for jf in sorted(cat_dir.glob("*.json")):
+    # 递归扫描所有源子目录下的 JSON 文件
+    for jf in sorted(cat_dir.rglob("*.json")):
         try:
             with open(jf, "r", encoding="utf-8") as f:
                 data = json.load(f)

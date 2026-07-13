@@ -25,7 +25,7 @@
       "scraper_name": "ccb",
       "description": "中国建设银行",
       "status": "active",
-      "hidden": false
+      "hidden": true
     },
     {
       "id": 4,
@@ -123,6 +123,15 @@
       "url": "https://ccgp.szcgpt.czbank.com/luban/category?parentId=700835&childrenCode=134-848230",
       "scraper_name": "czbank",
       "description": "",
+      "status": "active",
+      "hidden": false
+    },
+    {
+      "id": 15,
+      "name": "中国光大银行",
+      "url": "https://www.cebbank.com/site/zhpd/zxgg35/cggg/index.html",
+      "scraper_name": "cebbank",
+      "description": "中国光大银行采购公告",
       "status": "active",
       "hidden": false
     }
