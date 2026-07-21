@@ -28,6 +28,13 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
+# 数据库函数（本脚本作为子进程独立运行，会自行初始化连接池）
+from db import (
+    init_db, close_db, get_all_subscription_keywords,
+    ensure_subscription_table, insert_bid, insert_bid_keywords,
+    insert_bid_subscription,
+)
+
 # ──────────────────────────────────────────────
 # 加载环境变量
 # ──────────────────────────────────────────────
@@ -81,7 +88,7 @@ class ExtractedFields(BaseModel):
     )
     keywords: Optional[List[str]] = Field(
         default=None,
-        description="关键词，2个左右，最多不超过4个。要求：不要包含地区/省份（如北京、江苏）、产品类别（如服务类、工程类）等重复信息，每个关键词应是具体的业务关键词"
+        description="关键词，2个左右，最多不超过4个。要求：不要包含地区/省份（如北京、江苏）、产品类别（如服务类、工程类）等重复信息，每个关键词应是具体的业务关键词。注意：如果订阅词列表中已经包含了某个词，则不要在关键词中重复出现"
     )
     budget: Optional[float] = Field(
         default=None,
@@ -122,7 +129,7 @@ class ExtractedFields(BaseModel):
 # ──────────────────────────────────────────────
 DEFAULT_CONCURRENCY = 3  # 默认并发数（文件级别），可通过 --concurrency 参数调整
 REQUEST_INTERVAL = 1.0  # 每次请求之间的最小间隔（秒）
-BATCH_SIZE = 5  # 每次 LLM 调用处理的公告条数
+BATCH_SIZE = 10  # 每次 LLM 调用处理的公告条数
 
 # 生成 JSON Schema 供 prompt 中使用
 EXTRACTION_SCHEMA = ExtractedFields.model_json_schema()
@@ -323,11 +330,12 @@ async def extract_batch(
     source: str,
     semaphore: asyncio.Semaphore,
     batch_label: str,
-    max_retries: int = 3,
+    subscription_keywords: list = None,  # [(id, word), ...]
 ) -> list:
     """
     批量提取：将多条公告打包成一次 LLM 调用，返回 [(index, extracted_dict), ...]。
-    支持 429 限流自动重试。
+    遇到 429 限流直接返回失败。
+    extracted_dict 中额外包含 'subscription_matches' 字段: {word: 0/1}
     """
     # ★ 每次 LLM 调用前检查取消信号
     if _is_cancelled():
@@ -337,11 +345,25 @@ async def extract_batch(
     model = os.environ.get("OPENAI_MODEL", "qwen3.7-plus")
     schema_desc = build_schema_description()
 
+    # 构建订阅词匹配说明
+    sub_keywords = subscription_keywords or []
+    sub_prompt_section = ""
+    if sub_keywords:
+        words_list = "、".join([w for _, w in sub_keywords])
+        sub_prompt_section = (
+            f"\n\n★ 订阅词匹配：以下是用户订阅的关键词列表：【{words_list}】"
+            f"\n请对每条公告判断是否与这些订阅词相关。在每条结果中额外添加一个 \"subscription_matches\" 字段，"
+            f"它是一个对象，key 为订阅词，value 为 1（相关）或 0（不相关）。"
+            f"\n示例：\"subscription_matches\": {{\"云计算\": 1, \"装修\": 0}}"
+            f"\n注意：如果订阅词已经在 subscription_matches 中标记为 1，则不要在 keywords 字段中重复出现该词。"
+        )
+
     # 构建批量 prompt
     prompt_parts = [
         f"以下是 {len(batch)} 条公告，请逐条提取结构化信息。",
         f"\n⚠️ 重要：数据来源为多个银行/机构采购平台，其中可能包含非招标采购类文档（如新闻动态、内部制度、供应商征集公告、系统通知等）。请先判断每条文档是否为具体的招标/采购/中标类公告：如果不是，notice_type 直接填 2，其余字段可填 null，无需强行提取。",
         f"\n需要提取的字段及说明：\n{schema_desc}",
+        sub_prompt_section,
         "\n输出格式：JSON 对象，包含一个 'results' 数组，每个元素对应一条公告，顺序必须与输入一致。",
         "如果某字段找不到，填 null。只输出 JSON，不要输出其他内容。",
     ]
@@ -355,64 +377,61 @@ async def extract_batch(
     prompt = "\n".join(prompt_parts)
 
     async with semaphore:
-        for attempt in range(1, max_retries + 1):
-            # ★ 重试前也检查取消信号
-            if _is_cancelled():
-                print(f"  🛑 {batch_label}: 已取消，中止重试")
+        # ★ 调用前检查取消信号
+        if _is_cancelled():
+            print(f"  🛑 {batch_label}: 已取消，中止 LLM 调用")
+            return [(i, None) for i, _, _ in batch]
+        await _rate_limit()
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "你是一个专业的公告信息提取助手。数据来源包含多个银行/机构采购平台，其中既有招标/采购/中标类公告，也可能混有新闻、制度、通知等非招标类文档。请根据正文内容判断文档类型，非招标采购类文档的 notice_type 填 2，其余字段填 null。请严格按照要求的 JSON 格式输出。只输出 JSON，不要输出其他内容。",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0,
+                extra_body={"enable_thinking": False},
+            )
+
+            result_text = response.choices[0].message.content
+            result_data = json.loads(result_text)
+
+            # 兼容处理：LLM 可能返回 {"results": [...]} 或直接 [...]
+            if isinstance(result_data, dict):
+                # 找到第一个 list 类型的值
+                for v in result_data.values():
+                    if isinstance(v, list):
+                        result_data = v
+                        break
+                else:
+                    result_data = [result_data]
+
+            # 按顺序配对
+            results = []
+            for idx, (i, row, content) in enumerate(batch):
+                if idx < len(result_data):
+                    extracted = result_data[idx]
+                    title_preview = extracted.get("title", "N/A")[:30]
+                    print(f"  ✅ 第{i+1}条: 完成 (标题: {title_preview})")
+                    results.append((i, extracted))
+                else:
+                    print(f"  ⚠️ 第{i+1}条: LLM 返回数量不足，跳过")
+                    results.append((i, None))
+
+            print(f"  📦 {batch_label}: 批量完成 {len(batch)} 条")
+            return results
+
+        except Exception as e:
+            err_str = str(e)
+            if "429" in err_str:
+                print(f"  ❌ {batch_label}: 失败 - API 限流(429)，请求过于频繁，请稍后重试")
                 return [(i, None) for i, _, _ in batch]
-            await _rate_limit()
-            try:
-                response = await client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "你是一个专业的公告信息提取助手。数据来源包含多个银行/机构采购平台，其中既有招标/采购/中标类公告，也可能混有新闻、制度、通知等非招标类文档。请根据正文内容判断文档类型，非招标采购类文档的 notice_type 填 2，其余字段填 null。请严格按照要求的 JSON 格式输出。只输出 JSON，不要输出其他内容。",
-                        },
-                        {"role": "user", "content": prompt},
-                    ],
-                    response_format={"type": "json_object"},
-                    temperature=0,
-                    extra_body={"enable_thinking": False},
-                )
-
-                result_text = response.choices[0].message.content
-                result_data = json.loads(result_text)
-
-                # 兼容处理：LLM 可能返回 {"results": [...]} 或直接 [...]
-                if isinstance(result_data, dict):
-                    # 找到第一个 list 类型的值
-                    for v in result_data.values():
-                        if isinstance(v, list):
-                            result_data = v
-                            break
-                    else:
-                        result_data = [result_data]
-
-                # 按顺序配对
-                results = []
-                for idx, (i, row, content) in enumerate(batch):
-                    if idx < len(result_data):
-                        extracted = result_data[idx]
-                        title_preview = extracted.get("title", "N/A")[:30]
-                        print(f"  ✅ 第{i+1}条: 完成 (标题: {title_preview})")
-                        results.append((i, extracted))
-                    else:
-                        print(f"  ⚠️ 第{i+1}条: LLM 返回数量不足，跳过")
-                        results.append((i, None))
-
-                print(f"  📦 {batch_label}: 批量完成 {len(batch)} 条")
-                return results
-
-            except Exception as e:
-                err_str = str(e)
-                if "429" in err_str and attempt < max_retries:
-                    wait_secs = 3 * attempt
-                    print(f"  ⏳ {batch_label}: 限流(429)，{wait_secs}s 后重试 ({attempt}/{max_retries})...")
-                    await asyncio.sleep(wait_secs)
-                    continue
-                print(f"  ❌ {batch_label}: 失败 - {e}")
-                return [(i, None) for i, _, _ in batch]
+            print(f"  ❌ {batch_label}: 失败 - {e}")
+            return [(i, None) for i, _, _ in batch]
 
     return [(i, None) for i, _, _ in batch]
 
@@ -422,6 +441,7 @@ async def process_file(
     file_path: Path,
     semaphore: asyncio.Semaphore,
     batch_size: int = BATCH_SIZE,
+    subscription_keywords: list = None,
 ) -> list:
     """处理单个 raw_data 文件，批量提取所有条目"""
     with open(file_path, "r", encoding="utf-8") as f:
@@ -454,7 +474,7 @@ async def process_file(
 
     # 并发执行所有批次
     batch_coros = [
-        extract_batch(client, batch, source, semaphore, label)
+        extract_batch(client, batch, source, semaphore, label, subscription_keywords)
         for batch, label in batches
     ]
     batch_results = await asyncio.gather(*batch_coros)
@@ -494,6 +514,8 @@ async def process_file(
         content_raw = row.get("content", "")
         # 保留原始发布日期（publishTime），用于按日期分组输出
         raw_publish_time = row.get("publishTime") or row.get("publish_time") or row.get("date") or ""
+        # 提取订阅词匹配结果（不写入 JSON 文件，仅用于 DB 写入）
+        sub_matches = extracted.pop("subscription_matches", None)
         result = {
             "source": source,
             "scrape_time": scrape_time,
@@ -502,6 +524,9 @@ async def process_file(
             "content": content_raw,
             **extracted,
         }
+        # 保留 subscription_matches 供后续 DB 写入使用
+        if sub_matches:
+            result["subscription_matches"] = sub_matches
         results.append(result)
 
     return results
@@ -552,6 +577,17 @@ async def async_main():
     if args.cancel_file:
         _cancel_file_path = Path(args.cancel_file)
 
+    # ★ 初始化数据库连接，获取订阅词列表
+    await init_db()
+    subscription_keywords = await get_all_subscription_keywords()  # [(id, word), ...]
+    if subscription_keywords:
+        print(f"📌 当前订阅词({len(subscription_keywords)}个): {', '.join(w for _, w in subscription_keywords)}")
+        # 确保所有订阅词子表存在
+        for kid, _ in subscription_keywords:
+            await ensure_subscription_table(kid)
+    else:
+        print("📌 当前无订阅词")
+
     # 确定要处理的文件
     if args.source:
         sources = [s.strip() for s in args.source.split(",")]
@@ -568,6 +604,7 @@ async def async_main():
 
     if not files:
         print("❌ 没有要处理的文件")
+        await close_db()
         return
 
     # 统计总条目数
@@ -589,12 +626,16 @@ async def async_main():
     start_time = time.time()
 
     # 所有文件的所有条目并发处理（跨文件也并发）
-    all_file_coros = [process_file(client, fp, semaphore, batch_size=args.batch_size) for fp in files]
+    all_file_coros = [
+        process_file(client, fp, semaphore, batch_size=args.batch_size, subscription_keywords=subscription_keywords)
+        for fp in files
+    ]
     all_file_results = await asyncio.gather(*all_file_coros)
 
     # ★ LLM 完成后立即检查取消信号，避免已取消的任务还写入数据
     if _is_cancelled():
         print(f"\n🛑 LLM 提取完成后检测到取消信号，跳过数据写入")
+        await close_db()
         return
 
     all_results = []
@@ -628,6 +669,7 @@ async def async_main():
     # ── 写入前检查取消信号（统一用 _is_cancelled）──
     if _is_cancelled():
         print(f"\n🛑 检测到取消信号，跳过数据写入")
+        await close_db()
         return
 
     saved_count = 0
@@ -650,6 +692,11 @@ async def async_main():
                 try:
                     with file_lock(lock_path, timeout=30.0):
                         # 同源覆盖，直接写入（不再合并其他源的数据）
+                        # 写入 JSON 时排除 subscription_matches 字段
+                        clean_records = [
+                            {k: v for k, v in rec.items() if k != "subscription_matches"}
+                            for rec in new_records
+                        ]
                         with open(output_path, "w", encoding="utf-8") as f:
                             json.dump(
                                 {
@@ -657,8 +704,8 @@ async def async_main():
                                     "scrapeDate": date_str,
                                     "noticeType": notice_type,
                                     "source": source,
-                                    "totalRecords": len(new_records),
-                                    "records": new_records,
+                                    "totalRecords": len(clean_records),
+                                    "records": clean_records,
                                 },
                                 f,
                                 ensure_ascii=False,
@@ -671,9 +718,62 @@ async def async_main():
                 except Exception as e:
                     print(f"  ❌ {notice_type}/{source} ({date_str}): 写入失败 - {e}")
 
+    # ★ 写入数据库：将每条标书存入 bids 表 + bid_keywords 表 + 订阅词子表
+    db_saved = 0
+    if all_results and not _is_cancelled():
+        print(f"\n💾 开始写入数据库...")
+        # 构建订阅词 word -> id 的映射
+        sub_word_to_id = {word: kid for kid, word in subscription_keywords}
+        for r in all_results:
+            if _is_cancelled():
+                print(f"🛑 检测到取消信号，停止 DB 写入（已写入 {db_saved} 条）")
+                break
+            try:
+                # 提取 subscription_matches 并从结果中移除（不写入 JSON 文件）
+                sub_matches = r.pop("subscription_matches", None) or {}
+                # 准备 keywords JSON
+                keywords_list = r.get("keywords") or []
+                keywords_json = json.dumps(keywords_list, ensure_ascii=False) if keywords_list else None
+                # 插入 bids 主表
+                bid_data = {
+                    "source": r.get("source"),
+                    "scrape_time": r.get("scrape_time"),
+                    "url": r.get("url"),
+                    "content": r.get("content"),
+                    "title": r.get("title"),
+                    "notice_type": r.get("notice_type"),
+                    "publish_time": r.get("publish_time"),
+                    "bid_time": r.get("bid_time"),
+                    "summary": r.get("summary"),
+                    "keywords_json": keywords_json,
+                    "budget": r.get("budget"),
+                    "purchaser": r.get("purchaser"),
+                    "purchaser_region": r.get("purchaser_region"),
+                    "service_category": r.get("service_category"),
+                    "service_province": r.get("service_province"),
+                    "service_location": r.get("service_location"),
+                    "remarks": r.get("remarks"),
+                }
+                bid_id = await insert_bid(bid_data)
+                # 插入提取关键词到 bid_keywords 表
+                if keywords_list:
+                    await insert_bid_keywords(bid_id, keywords_list)
+                # 处理订阅词匹配：将匹配的 bid_id 插入对应订阅词子表
+                if sub_matches and isinstance(sub_matches, dict):
+                    for word, matched in sub_matches.items():
+                        if matched == 1 and word in sub_word_to_id:
+                            await insert_bid_subscription(bid_id, sub_word_to_id[word])
+                db_saved += 1
+            except Exception as e:
+                print(f"  ❌ DB 写入失败 (标题: {r.get('title', 'N/A')[:20]}): {e}")
+        print(f"💾 数据库写入完成，共 {db_saved} 条")
+
     print(f"\n✅ 提取完成！共 {saved_count} 条记录")
     print(f"📂 输出目录: {OUTPUT_DIR}")
     print(f"⏱️  耗时: {elapsed:.1f}s")
+
+    # 关闭数据库连接
+    await close_db()
 
 
 if __name__ == "__main__":

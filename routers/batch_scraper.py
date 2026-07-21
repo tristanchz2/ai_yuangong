@@ -483,8 +483,8 @@ async def _run_field_extraction(task: BatchScraperTask, st: SiteTask) -> bool:
             st.add_log(f"✗ {st.error}")
             return False
 
-        # 统计该源在 extracted_data 中的记录数
-        st.extracted_rows = _count_extracted_records(source)
+        # 统计该源在 DB 中的记录数
+        st.extracted_rows = await _count_extracted_records(source)
         return True
 
     except FileNotFoundError:
@@ -497,20 +497,18 @@ async def _run_field_extraction(task: BatchScraperTask, st: SiteTask) -> bool:
         return False
 
 
-def _count_extracted_records(source: str) -> int:
-    """统计指定源在 extracted_data 中的记录数（新结构: extracted_data/{notice_type}/{source}/）"""
+async def _count_extracted_records(source: str) -> int:
+    """统计指定源在 DB bids 表中的记录数"""
     try:
-        extracted_dir = PROJECT_ROOT / "extracted_data"
-        total = 0
-        for folder in ["采购公告", "结果公告", "其他"]:
-            # 新结构: extracted_data/{notice_type}/{source}/*.json
-            source_dir = extracted_dir / folder / source
-            if source_dir.exists():
-                for f in source_dir.glob("*.json"):
-                    with open(f, "r", encoding="utf-8") as fh:
-                        data = json.load(fh)
-                        total += data.get("totalRecords", 0)
-        return total
+        from db import get_pool
+        pool = await get_pool()
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT COUNT(*) FROM bids WHERE source = %s", (source,)
+                )
+                row = await cur.fetchone()
+                return row[0] if row else 0
     except Exception:
         return 0
 

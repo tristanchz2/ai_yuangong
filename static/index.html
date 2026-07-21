@@ -121,6 +121,8 @@ const PER_PAGE = 8;
 const ICONS = { "采购公告": "📋", "结果公告": "✅", "其他": "📁" };
 let allRecords = [];
 let currentPage = 1;
+let totalPages = 1;
+let totalRecords = 0;
 let currentCategory = "";
 
 async function loadCategories() {
@@ -130,16 +132,17 @@ async function loadCategories() {
     const grid = document.getElementById('categoryGrid');
     grid.innerHTML = data.categories.map(cat => {
       const icon = ICONS[cat.name] || '📂';
-      const extTime = cat.latestExtractedAt ? new Date(cat.latestExtractedAt).toLocaleString('zh-CN') : '未知';
-      return `<div class="category-card" onclick="showCategory('${cat.name}')"><div class="category-icon">${icon}</div><div class="category-name">${cat.name}</div><div class="category-stats">共 <strong>${cat.totalRecords}</strong> 条记录<br>数据来源文件：${cat.fileCount} 个<br>最近更新：${extTime}</div></div>`;
+      const extTime = cat.latestExtractedAt ? new Date(cat.latestExtractedAt).toLocaleString('zh-CN') : '暂无数据';
+      return `<div class="category-card" onclick="showCategory('${cat.name}')"><div class="category-icon">${icon}</div><div class="category-name">${cat.name}</div><div class="category-stats">共 <strong>${cat.totalRecords}</strong> 条记录<br>数据来源：${cat.fileCount} 个平台<br>最近更新：${extTime}</div></div>`;
     }).join('');
   } catch (e) {
     document.getElementById('categoryGrid').innerHTML = '<div class="loading" style="color:#dc2626">加载失败：' + e.message + '</div>';
   }
 }
 
-async function showCategory(category) {
+async function showCategory(category, page = 1) {
   currentCategory = category;
+  currentPage = page;
   document.getElementById('homePage').classList.add('hidden');
   document.getElementById('dataPage').classList.remove('hidden');
   document.getElementById('detailPage').classList.add('hidden');
@@ -148,11 +151,12 @@ async function showCategory(category) {
   document.getElementById('cardContainer').innerHTML = '<div class="loading">正在加载数据...</div>';
   document.getElementById('pagination').style.display = 'none';
   try {
-    const resp = await fetch(`/api/data/${encodeURIComponent(category)}?t=` + Date.now());
+    const resp = await fetch(`/api/data/${encodeURIComponent(category)}?page=${page}&page_size=${PER_PAGE}&t=` + Date.now());
     const data = await resp.json();
     allRecords = data.records || [];
-    document.getElementById('dataPageMeta').textContent = `共 ${allRecords.length} 条记录`;
-    currentPage = 1;
+    totalRecords = data.totalRecords || 0;
+    totalPages = Math.max(1, Math.ceil(totalRecords / PER_PAGE));
+    document.getElementById('dataPageMeta').textContent = `共 ${totalRecords} 条记录`;
     renderCards();
   } catch (e) {
     document.getElementById('cardContainer').innerHTML = '<div class="loading" style="color:#dc2626">加载失败：' + e.message + '</div>';
@@ -167,19 +171,12 @@ function showHome() {
   loadCategories();
 }
 
-let totalPages = 1;
-
 function renderCards() {
-  const total = allRecords.length;
-  totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
-  if (currentPage > totalPages) currentPage = totalPages;
-  const start = (currentPage - 1) * PER_PAGE;
-  const pageRecords = allRecords.slice(start, start + PER_PAGE);
-  document.getElementById('cardContainer').innerHTML = pageRecords.map((r, i) => {
-    const globalIdx = start + i;
+  document.getElementById('cardContainer').innerHTML = allRecords.map((r, i) => {
+    const globalIdx = (currentPage - 1) * PER_PAGE + i;
     const budgetStr = r.budget != null ? '¥' + Number(r.budget).toLocaleString('zh-CN', {minimumFractionDigits:2, maximumFractionDigits:2}) : '-';
     const keywords = (r.keywords || []).map(k => `<span class="kw">${esc(k)}</span>`).join('');
-    return `<div class="card" onclick="showDetail(${globalIdx})"><div class="card-title">${esc(r.title||'无标题')}</div><div class="tags"><span class="tag source">${esc(r.source||'')}</span><span class="tag region">${esc(r.purchaser_region||'')}</span></div><div class="card-row"><div><span class="label">发布时间：</span><span class="value">${esc(r.publish_time||'-')}</span></div><div><span class="label">招标时间：</span><span class="value">${esc(r.bid_time||'-')}</span></div><div><span class="label">采购人：</span><span class="value">${esc(r.purchaser||'-')}</span></div><div><span class="label">预算：</span><span class="value budget">${budgetStr}</span></div><div><span class="label">服务类别：</span><span class="value">${esc(r.service_category||'-')}</span></div><div><span class="label">服务地点：</span><span class="value">${esc(r.service_location||'-')}</span></div></div><div class="summary">${esc(r.summary||'')}</div><div class="keywords">${keywords}</div></div>`;
+    return `<div class="card" onclick="showDetail(${i})"><div class="card-title">${esc(r.title||'无标题')}</div><div class="tags"><span class="tag source">${esc(r.source||'')}</span><span class="tag region">${esc(r.purchaser_region||'')}</span></div><div class="card-row"><div><span class="label">发布时间：</span><span class="value">${esc(r.publish_time||'-')}</span></div><div><span class="label">招标时间：</span><span class="value">${esc(r.bid_time||'-')}</span></div><div><span class="label">采购人：</span><span class="value">${esc(r.purchaser||'-')}</span></div><div><span class="label">预算：</span><span class="value budget">${budgetStr}</span></div><div><span class="label">服务类别：</span><span class="value">${esc(r.service_category||'-')}</span></div><div><span class="label">服务地点：</span><span class="value">${esc(r.service_location||'-')}</span></div></div><div class="summary">${esc(r.summary||'')}</div><div class="keywords">${keywords}</div></div>`;
   }).join('');
   const pag = document.getElementById('pagination');
   pag.style.display = totalPages > 1 ? 'flex' : 'none';
@@ -205,8 +202,7 @@ function renderCards() {
 
 function goPage(p) {
   if (p < 1 || p > totalPages) return;
-  currentPage = p;
-  renderCards();
+  showCategory(currentCategory, p);
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -229,7 +225,6 @@ function showDetail(index) {
   document.getElementById('dataPage').classList.add('hidden');
   document.getElementById('detailPage').classList.remove('hidden');
   
-  // 渲染标题和元数据
   document.getElementById('detailTitle').textContent = r.title || '无标题';
   document.getElementById('detailMeta').innerHTML = `
     <div class="meta-row"><span class="meta-label">发布时间：</span><span class="meta-value">${esc(r.publish_time||'-')}</span></div>
@@ -240,7 +235,6 @@ function showDetail(index) {
     ${r.url ? `<a href="${esc(r.url)}" target="_blank" class="meta-link" title="查看原文">🔗 原文链接</a>` : ''}
   `;
   
-  // content 是纯文本，用 textContent 渲染
   const el = document.getElementById('detailContent');
   el.textContent = r.content || '暂无正文内容';
   window.scrollTo({ top: 0, behavior: 'smooth' });

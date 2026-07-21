@@ -17,6 +17,7 @@
 """
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -42,13 +43,21 @@ _load_env()
 from routers.data import router as data_router
 from routers.scraper import router as scraper_router
 from routers.admin import router as admin_router
+from db import init_db, ensure_tables, close_db
 
 # 创建 FastAPI 应用
-app = FastAPI(title="爬虫生成服务", version="2.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    await ensure_tables()
+    yield
+    await close_db()
+
+
+app = FastAPI(title="爬虫生成服务", version="2.0", lifespan=lifespan)
 
 # 项目目录
 STATIC_DIR = PROJECT_ROOT / "static"
-EXTRACTED_DATA_DIR = PROJECT_ROOT / "extracted_data"
 SCRAPERS_DIR = PROJECT_ROOT / "scrapers"
 
 # 注册路由

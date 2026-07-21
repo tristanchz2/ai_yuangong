@@ -25,7 +25,7 @@
       "scraper_name": "ccb",
       "description": "中国建设银行",
       "status": "active",
-      "hidden": true
+      "hidden": false
     },
     {
       "id": 4,
@@ -132,6 +132,15 @@
       "url": "https://www.cebbank.com/site/zhpd/zxgg35/cggg/index.html",
       "scraper_name": "cebbank",
       "description": "中国光大银行采购公告",
+      "status": "active",
+      "hidden": false
+    },
+    {
+      "id": 16,
+      "name": "中国民生银行",
+      "url": "https://pms.cmbc.com.cn/purchase/listMore.html?categoryId=0205DC9E86F4C12C256094C8F271049D0289539534AEC561D051E4BB132055B0C181EF712D2717E0BCECBCF31010137B",
+      "scraper_name": "cmbc",
+      "description": "",
       "status": "active",
       "hidden": false
     }

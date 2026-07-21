@@ -40,21 +40,21 @@
   .toolbar-actions { display: flex; gap: 10px; flex-wrap: wrap; }
   .site-table { width: 100%; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.06); table-layout: fixed; }
   .site-table th { background: #f8fafc; padding: 12px 14px; text-align: left; font-size: 13px; color: #666; border-bottom: 1px solid #eee; }
-  .site-table td { padding: 12px 14px; font-size: 14px; border-bottom: 1px solid #f0f0f0; word-wrap: break-word; overflow-wrap: break-word; }
-  .site-table th:first-child, .site-table td:first-child { width: 50px; }
-  .site-table th:nth-child(2), .site-table td:nth-child(2) { width: 180px; }
-  .site-table th:nth-child(3), .site-table td:nth-child(3) { width: 250px; }
-  .site-table th:nth-child(4), .site-table td:nth-child(4) { width: 100px; }
-  .site-table th:nth-child(5), .site-table td:nth-child(5) { width: 90px; }
-  .site-table th:last-child, .site-table td:last-child { width: 180px; }
-  .site-table .url-cell { max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+  .site-table td { padding: 12px 14px; font-size: 14px; border-bottom: 1px solid #f0f0f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .site-table th:first-child, .site-table td:first-child { width: 52px; }
+  .site-table th:nth-child(2), .site-table td:nth-child(2) { width: 200px; }
+  .site-table th:nth-child(3), .site-table td:nth-child(3) { }
+  .site-table th:nth-child(4), .site-table td:nth-child(4) { width: 110px; }
+  .site-table th:nth-child(5), .site-table td:nth-child(5) { width: 78px; padding-left: 8px; padding-right: 8px; }
+  .site-table th:last-child, .site-table td:last-child { width: 164px; padding-left: 8px; padding-right: 8px; overflow-x: hidden; }
+  .site-table .url-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
   .site-table tr:last-child td { border-bottom: none; }
   .site-table tr:hover { background: #fafbfc; }
   .site-table tr.hidden-row { opacity: 0.5; }
   .status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; white-space: nowrap; }
   .status-active { background: #d1fae5; color: #047857; }
   .status-hidden { background: #fee2e2; color: #b91c1c; }
-  .action-btns { display: flex; gap: 4px; flex-wrap: nowrap; }
+  .action-btns { display: flex; gap: 4px; flex-wrap: nowrap; justify-content: center; }
   .action-btns .btn { padding: 6px 10px; font-size: 12px; white-space: nowrap; }
   .add-form { background: #fff; padding: 24px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.06); display: none; }
   .add-form.active { display: block; }
@@ -138,6 +138,14 @@
   .log-line.error { color: #f87171; }
   .empty-state { text-align: center; padding: 60px; color: #888; }
 
+  /* 订阅词气泡 */
+  .kw-bubbles { display: flex; flex-wrap: wrap; gap: 10px; }
+  .kw-bubble { position: relative; display: inline-flex; align-items: center; padding: 8px 16px; background: #eef4fb; border: 1px solid #d0e2f5; border-radius: 20px; font-size: 14px; color: #1e3a5f; transition: all .2s; }
+  .kw-bubble:hover { background: #e0edfa; box-shadow: 0 2px 6px rgba(30,58,95,.1); }
+  .kw-x { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; border-radius: 50%; background: #dc2626; color: #fff; font-size: 11px; line-height: 18px; text-align: center; cursor: pointer; opacity: 0; transition: opacity .15s; border: none; padding: 0; }
+  .kw-bubble:hover .kw-x { opacity: 1; }
+  .kw-empty { color: #999; font-size: 14px; text-align: center; padding: 30px 0; }
+
   /* 任务列表 */
   .task-list-item { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 10px; overflow: hidden; transition: all .2s; }
   .task-list-item:hover { box-shadow: 0 2px 12px rgba(0,0,0,.08); }
@@ -181,6 +189,7 @@
       <h2>网站管理</h2>
       <div class="toolbar-actions">
         <button class="btn btn-info" onclick="openTaskModal()">📋 历史任务</button>
+        <button class="btn btn-info" onclick="openKeywordModal()">🏷️ 订阅词管理</button>
         <button class="btn btn-success" onclick="startBatchScrape()">重新爬取昨日数据</button>
         <button class="btn btn-success" onclick="toggleAddForm()">+ 添加网站</button>
         <button class="btn btn-logout" onclick="doLogout()">退出</button>
@@ -221,6 +230,23 @@
     </div>
     <div class="modal-body" id="taskListBody">
       <div class="empty-state">加载中...</div>
+    </div>
+  </div>
+</div>
+
+<!-- 订阅词管理弹窗 -->
+<div class="modal-overlay" id="keywordModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <h3>🏷️ 订阅词管理</h3>
+      <button class="modal-close" onclick="closeKeywordModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <input type="text" id="keywordInput" placeholder="输入订阅词" style="flex:1;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px" onkeydown="if(event.key==='Enter')addKeyword()">
+        <button class="btn btn-success" onclick="addKeyword()" style="white-space:nowrap">添加</button>
+      </div>
+      <div id="keywordList"><div class="empty-state">加载中...</div></div>
     </div>
   </div>
 </div>
@@ -904,6 +930,68 @@ async function saveSite() {
 document.getElementById('editModal').addEventListener('click', function(e) {
   if (e.target === this) closeEditModal();
 });
+
+// ============ 订阅词管理 ============
+
+function openKeywordModal() {
+  document.getElementById('keywordModal').classList.add('active');
+  loadKeywords();
+}
+
+function closeKeywordModal() {
+  document.getElementById('keywordModal').classList.remove('active');
+}
+
+document.getElementById('keywordModal').addEventListener('click', function(e) {
+  if (e.target === this) closeKeywordModal();
+});
+
+async function loadKeywords() {
+  try {
+    const resp = await fetch('/api/admin/keywords', { headers: { 'X-Admin-Token': adminToken } });
+    if (!resp.ok) { document.getElementById('keywordList').innerHTML = '<div class="empty-state" style="color:#dc2626">加载失败</div>'; return; }
+    const keywords = await resp.json();
+    renderKeywords(keywords);
+  } catch (e) { document.getElementById('keywordList').innerHTML = '<div class="empty-state" style="color:#dc2626">网络错误</div>'; }
+}
+
+function renderKeywords(keywords) {
+  if (!keywords || keywords.length === 0) {
+    document.getElementById('keywordList').innerHTML = '<div class="kw-empty">暂无订阅词，请在上方添加</div>';
+    return;
+  }
+  let html = '<div class="kw-bubbles">';
+  for (const k of keywords) {
+    html += `<span class="kw-bubble">${esc(k.word)}<button class="kw-x" title="删除" onclick="deleteKeyword(${k.id}, '${esc(k.word)}')">✕</button></span>`;
+  }
+  html += '</div>';
+  document.getElementById('keywordList').innerHTML = html;
+}
+
+async function addKeyword() {
+  const input = document.getElementById('keywordInput');
+  const word = input.value.trim();
+  if (!word) { alert('请输入订阅词'); return; }
+  try {
+    const resp = await fetch('/api/admin/keywords', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken },
+      body: JSON.stringify({ word })
+    });
+    if (!resp.ok) { const err = await resp.json(); alert(err.detail || '添加失败'); return; }
+    input.value = '';
+    loadKeywords();
+  } catch (e) { alert('网络错误: ' + e.message); }
+}
+
+async function deleteKeyword(id, word) {
+  if (!confirm(`确定删除订阅词「${word}」？`)) return;
+  try {
+    const resp = await fetch(`/api/admin/keywords/${id}`, { method: 'DELETE', headers: { 'X-Admin-Token': adminToken } });
+    if (!resp.ok) { const err = await resp.json(); alert(err.detail || '删除失败'); return; }
+    loadKeywords();
+  } catch (e) { alert('网络错误'); }
+}
 </script>
 </body>
 </html>

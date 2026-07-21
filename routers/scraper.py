@@ -143,14 +143,23 @@ def fallback_quality_check(data: Dict[str, Any]) -> tuple:
     return True, "基础检查通过"
 
 
-async def run_hermes_generate(task_id: str, url: str, custom_name: Optional[str] = None, reference_urls: Optional[list[str]] = None):
-    """后台任务：调用 Hermes 生成爬虫"""
-    task = tasks[task_id]
-    task['status'] = 'running'
-    task['started_at'] = time.time()
+async def _cleanup_scraper_files(scraper_name: str):
+    """清理爬虫可能生成的残留文件"""
+    if not scraper_name:
+        return
+    scraper_path = SCRAPERS_DIR / f"scrape_{scraper_name}.js"
+    output_json = PROJECT_ROOT / "raw_data" / f"{scraper_name}_data.json"
+    for f in [scraper_path, output_json]:
+        if f.exists():
+            f.unlink()
 
-    log_file = PROJECT_ROOT / "logs" / f"{task_id}.log"
+
+async def _run_hermes_generate_step(task_id: str, url: str, custom_name: Optional[str], reference_urls: Optional[list[str]], skill_name: str):
+    """单步执行：用指定 skill 调用 Hermes 生成爬虫。返回 True 表示成功，False 表示失败。"""
+    task = tasks[task_id]
+    log_file = PROJECT_ROOT / "logs" / f"{task_id}_{skill_name}.log"
     log_file.parent.mkdir(exist_ok=True)
+    log_file.touch()
     task['log_file'] = str(log_file)
 
     process = None
@@ -160,21 +169,17 @@ async def run_hermes_generate(task_id: str, url: str, custom_name: Optional[str]
 
     try:
         if scraper_path.exists():
-            task['status'] = 'failed'
-            task['error'] = f'爬虫已存在: {scraper_path}'
-            task['finished_at'] = time.time()
-            task['duration'] = task['finished_at'] - task['started_at']
-            return
+            # 如果文件已存在（可能是上一步残留），先清理
+            await _cleanup_scraper_files(scraper_name)
 
         # 拼接 prompt
         prompt = f"帮我爬这个网站：{url}，爬虫名称用 {scraper_name}。不要问我任何问题，所有决策你自己做，遇到错误自己修复。"
-        
-        # 如果有参考 URL，加到 prompt 里
+
         if reference_urls and len(reference_urls) > 0:
             refs_text = "\n".join([f"- {ref_url}" for ref_url in reference_urls])
             prompt += f"\n\n参考以下详情页 URL，学习页面结构和选择器：\n{refs_text}\n\n优先从这些参考页面分析 HTML 结构和数据提取规则。"
-        
-        cmd = ['hermes', 'chat', '-q', prompt, '-s', 'gen-scraper', '--yolo']
+
+        cmd = ['hermes', 'chat', '-q', prompt, '-s', skill_name, '--yolo']
 
         process = await asyncio.create_subprocess_exec(
             *cmd,
@@ -184,26 +189,21 @@ async def run_hermes_generate(task_id: str, url: str, custom_name: Optional[str]
         )
         assert process.stdout is not None
 
-        # 总绝对超时：从任务开始算起最多 30 分钟
-        ABSOLUTE_TIMEOUT = 1800  # 秒
-        # 无输出超时：如果连续 5 分钟没有新输出，认为进程 hang
-        IDLE_TIMEOUT = 300  # 秒
+        # 超时设置
+        ABSOLUTE_TIMEOUT = 1800  # 30 分钟
+        IDLE_TIMEOUT = 300  # 5 分钟无输出
         last_output_time = time.time()
+        step_started_at = time.time()
 
         with open(log_file, 'w', encoding='utf-8') as f:
             while True:
-                # 检查总绝对超时
-                elapsed = time.time() - task['started_at']
+                elapsed = time.time() - step_started_at
                 if elapsed > ABSOLUTE_TIMEOUT:
-                    task['status'] = 'failed'
-                    task['error'] = f'Hermes 执行超时（总耗时 {elapsed:.0f}s > {ABSOLUTE_TIMEOUT}s）'
-                    task['finished_at'] = time.time()
-                    task['duration'] = task['finished_at'] - task['started_at']
+                    task['error'] = f'{skill_name} 执行超时（{elapsed:.0f}s > {ABSOLUTE_TIMEOUT}s）'
                     process.kill()
                     await process.wait()
-                    return
+                    return False
 
-                # 计算距离上次输出的空闲时间
                 idle_elapsed = time.time() - last_output_time
                 remaining_idle = IDLE_TIMEOUT - idle_elapsed
                 read_timeout = max(min(remaining_idle, 60.0), 5.0)
@@ -211,22 +211,16 @@ async def run_hermes_generate(task_id: str, url: str, custom_name: Optional[str]
                 try:
                     line = await asyncio.wait_for(process.stdout.readline(), timeout=read_timeout)
                     if not line:
-                        # stdout EOF: 直接退出循环，不再依赖 returncode
                         break
                     f.write(line.decode('utf-8', errors='replace'))
                     f.flush()
                     last_output_time = time.time()
                 except asyncio.TimeoutError:
-                    # 检查是否是空闲超时
                     if time.time() - last_output_time >= IDLE_TIMEOUT:
-                        task['status'] = 'failed'
-                        task['error'] = f'Hermes 进程无新输出超过 {IDLE_TIMEOUT}s，疑似 hang'
-                        task['finished_at'] = time.time()
-                        task['duration'] = task['finished_at'] - task['started_at']
+                        task['error'] = f'{skill_name} 进程无新输出超过 {IDLE_TIMEOUT}s，疑似 hang'
                         process.kill()
                         await process.wait()
-                        return
-                    # 否则只是单次 readline 超时，继续等
+                        return False
                     if process.returncode is not None:
                         break
                     continue
@@ -241,23 +235,20 @@ async def run_hermes_generate(task_id: str, url: str, custom_name: Optional[str]
             process.kill()
             await process.wait()
 
-        task['finished_at'] = time.time()
-        task['duration'] = task['finished_at'] - task['started_at']
-
-        with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
-            log_content = f.read()
-
         if process.returncode != 0:
-            task['status'] = 'failed'
-            task['error'] = log_content[-2000:] or f'Hermes 退出码 {process.returncode}'
-            return
+            with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+                log_content = f.read()
+            task['error'] = log_content[-2000:] or f'{skill_name} 退出码 {process.returncode}'
+            return False
 
         if not scraper_path.exists():
-            task['status'] = 'failed'
-            task['error'] = f'爬虫文件未生成: {scraper_path}'
+            with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+                log_content = f.read()
+            task['error'] = f'{skill_name} 爬虫文件未生成: {scraper_path}'
             task['log_preview'] = log_content[-1000:] if log_content else ''
-            return
+            return False
 
+        # 测试爬虫
         test_passed = False
         test_output = ''
 
@@ -326,22 +317,67 @@ async def run_hermes_generate(task_id: str, url: str, custom_name: Optional[str]
             task['status'] = 'success'
             task['scraper_name'] = scraper_name
             task['scraper_path'] = str(scraper_path)
+            with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+                log_content = f.read()
             task['log_preview'] = log_content[-1000:] if log_content else ''
+            return True
         else:
-            task['status'] = 'failed'
-            task['error'] = f'爬虫测试失败:\n{test_output}'
+            task['error'] = f'{skill_name} 爬虫测试失败:\n{test_output}'
+            with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+                log_content = f.read()
             task['log_preview'] = log_content[-1000:] if log_content else ''
-
+            # 清理失败的爬虫文件
             if scraper_path.exists():
                 scraper_path.unlink()
             if output_json.exists():
                 output_json.unlink()
+            return False
 
     except Exception as e:
-        task['status'] = 'failed'
         task['error'] = str(e)
+        return False
+
+
+async def run_hermes_generate(task_id: str, url: str, custom_name: Optional[str] = None, reference_urls: Optional[list[str]] = None):
+    """后台任务：两步策略生成爬虫。Step 1: gen-scraper, Step 2: gen-scraper-browser (兜底)"""
+    task = tasks[task_id]
+    task['status'] = 'running'
+    task['started_at'] = time.time()
+
+    scraper_name = custom_name or derive_scraper_name(url)
+
+    # ── Step 1: gen-scraper（HTTP API 方案）──
+    task['message'] = '步骤1: 使用 gen-scraper（HTTP API 方案）'
+    step1_ok = await _run_hermes_generate_step(task_id, url, custom_name, reference_urls, 'gen-scraper')
+
+    if step1_ok:
+        task['strategy_used'] = 'gen-scraper'
         task['finished_at'] = time.time()
         task['duration'] = task['finished_at'] - task['started_at']
+        return
+
+    # ── Step 2: gen-scraper-browser（Chrome CDP 兜底方案）──
+    step1_error = task.get('error', '未知错误')
+    task['step1_error'] = step1_error
+    task['message'] = f'步骤2: gen-scraper 失败，切换到 gen-scraper-browser（Chrome CDP 兜底方案）'
+
+    # 清理 Step 1 残留
+    await _cleanup_scraper_files(scraper_name)
+
+    task['status'] = 'running'
+    step2_ok = await _run_hermes_generate_step(task_id, url, custom_name, reference_urls, 'gen-scraper-browser')
+
+    task['finished_at'] = time.time()
+    task['duration'] = task['finished_at'] - task['started_at']
+
+    if step2_ok:
+        task['strategy_used'] = 'gen-scraper-browser'
+        task['status'] = 'success'
+        task['message'] = '成功：使用 gen-scraper-browser（Chrome CDP 兜底方案）'
+    else:
+        task['strategy_used'] = 'both-failed'
+        task['status'] = 'failed'
+        task['error'] = f'两种方案均失败。\nStep1 (gen-scraper): {step1_error}\nStep2 (gen-scraper-browser): {task.get("error", "未知")}'
 
 
 @router.post("/generate", response_model=GenerateResponse)
