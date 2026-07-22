@@ -5,17 +5,17 @@ import os
 import secrets
 import time
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Depends, Header
-from pydantic import BaseModel
 
-from db import get_pool, ensure_subscription_table, drop_subscription_table
-from routers.scraper import run_hermes_generate, tasks as generate_tasks
+from config.settings import PROJECT_ROOT, SCRAPERS_DIR, RAW_DATA_DIR
+from core.database import get_pool
+from models.schemas import LoginRequest, LoginResponse, SiteCreate, SiteUpdate, KeywordCreate
+from services.subscription import ensure_subscription_table, drop_subscription_table
+from services.scraper_generator import run_hermes_generate, tasks as generate_tasks, derive_scraper_name
+import services.site_repo as site_repo
 
 router = APIRouter(prefix="/api/admin", tags=["管理员"])
-
-PROJECT_ROOT = Path(__file__).parent.parent
 
 # 管理员 token 存储
 admin_tokens: dict = {}
@@ -35,34 +35,6 @@ async def verify_admin_token(x_admin_token: str = Header(...)):
     return admin_tokens[x_admin_token]
 
 
-# ============ 模型 ============
-
-class LoginRequest(BaseModel):
-    password: str
-
-
-class LoginResponse(BaseModel):
-    token: str
-    message: str
-
-
-class SiteCreate(BaseModel):
-    name: str
-    url: str
-    scraper_name: Optional[str] = None
-    description: Optional[str] = None
-    reference_urls: Optional[list[str]] = None
-
-
-class SiteUpdate(BaseModel):
-    name: str
-    description: Optional[str] = None
-
-
-class KeywordCreate(BaseModel):
-    word: str
-
-
 # ============ 登录 ============
 
 @router.post("/login", response_model=LoginResponse)
@@ -80,47 +52,19 @@ async def admin_login(req: LoginRequest):
 
 @router.get("/sites")
 async def list_sites(_=Depends(verify_admin_token)):
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute(
-                "SELECT id, name, url, scraper_name, description, status, hidden FROM sites ORDER BY id"
-            )
-            rows = await cur.fetchall()
-    sites = []
-    for row in rows:
-        sites.append({
-            "id": row[0],
-            "name": row[1],
-            "url": row[2],
-            "scraper_name": row[3],
-            "description": row[4] or "",
-            "status": row[5],
-            "hidden": bool(row[6]),
-        })
-    return sites
+    return await site_repo.list_sites(include_hidden=True)
 
 
 @router.post("/sites")
 async def add_site(site: SiteCreate, _=Depends(verify_admin_token)):
-    pool = await get_pool()
     scraper_name = site.scraper_name
     if not scraper_name:
-        from routers.scraper import derive_scraper_name
         scraper_name = derive_scraper_name(site.url)
 
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute("SELECT id FROM sites WHERE url = %s", (site.url,))
-            if await cur.fetchone():
-                raise HTTPException(status_code=400, detail=f"网站已存在: {site.url}")
+    if await site_repo.site_url_exists(site.url):
+        raise HTTPException(status_code=400, detail=f"网站已存在: {site.url}")
 
-            await cur.execute(
-                """INSERT INTO sites (name, url, scraper_name, description, status, hidden)
-                   VALUES (%s, %s, %s, %s, 'active', 0)""",
-                (site.name, site.url, scraper_name, site.description or "")
-            )
-            new_id = cur.lastrowid
+    new_id = await site_repo.create_site(site.name, site.url, scraper_name, site.description or "")
 
     new_site = {
         "id": new_id, "name": site.name, "url": site.url,
@@ -145,15 +89,9 @@ async def add_site(site: SiteCreate, _=Depends(verify_admin_token)):
             await run_hermes_generate(task_id, site.url, scraper_name, site.reference_urls)
             task = generate_tasks.get(task_id)
             if task and task.get('status') != 'success':
-                p = await get_pool()
-                async with p.acquire() as c:
-                    async with c.cursor() as cur2:
-                        await cur2.execute("DELETE FROM sites WHERE id = %s", (new_id,))
+                await site_repo.delete_site(new_id)
         except Exception:
-            p = await get_pool()
-            async with p.acquire() as c:
-                async with c.cursor() as cur2:
-                    await cur2.execute("DELETE FROM sites WHERE id = %s", (new_id,))
+            await site_repo.delete_site(new_id)
 
     asyncio.create_task(generate_with_rollback())
 
@@ -162,26 +100,20 @@ async def add_site(site: SiteCreate, _=Depends(verify_admin_token)):
 
 @router.delete("/sites/{site_id}")
 async def delete_site(site_id: int, _=Depends(verify_admin_token)):
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute(
-                "SELECT id, name, scraper_name FROM sites WHERE id = %s", (site_id,)
-            )
-            row = await cur.fetchone()
-            if not row:
-                raise HTTPException(status_code=404, detail=f"网站不存在: id={site_id}")
+    site = await site_repo.get_site_by_id(site_id)
+    if not site:
+        raise HTTPException(status_code=404, detail=f"网站不存在: id={site_id}")
 
-            scraper_name = row[2]
-            await cur.execute("DELETE FROM sites WHERE id = %s", (site_id,))
+    scraper_name = site["scraper_name"]
+    await site_repo.delete_site(site_id)
 
     deleted_files = []
     if scraper_name:
-        scraper_file = PROJECT_ROOT / "scrapers" / f"scrape_{scraper_name}.js"
+        scraper_file = SCRAPERS_DIR / f"scrape_{scraper_name}.js"
         if scraper_file.exists():
             scraper_file.unlink()
             deleted_files.append(str(scraper_file))
-        data_file = PROJECT_ROOT / "raw_data" / f"{scraper_name}_data.json"
+        data_file = RAW_DATA_DIR / f"{scraper_name}_data.json"
         if data_file.exists():
             data_file.unlink()
             deleted_files.append(str(data_file))
@@ -191,18 +123,11 @@ async def delete_site(site_id: int, _=Depends(verify_admin_token)):
 
 @router.put("/sites/{site_id}")
 async def update_site(site_id: int, site: SiteUpdate, _=Depends(verify_admin_token)):
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute("SELECT id FROM sites WHERE id = %s", (site_id,))
-            if not await cur.fetchone():
-                raise HTTPException(status_code=404, detail=f"网站不存在: id={site_id}")
+    existing = await site_repo.get_site_by_id(site_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail=f"网站不存在: id={site_id}")
 
-            await cur.execute(
-                "UPDATE sites SET name = %s, description = %s WHERE id = %s",
-                (site.name, site.description or "", site_id)
-            )
-
+    await site_repo.update_site(site_id, site.name, site.description or "")
     return {"message": "网站已更新", "id": site_id}
 
 
@@ -210,28 +135,20 @@ async def update_site(site_id: int, site: SiteUpdate, _=Depends(verify_admin_tok
 
 @router.post("/sites/{site_id}/hide")
 async def hide_site(site_id: int, _=Depends(verify_admin_token)):
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute("SELECT name FROM sites WHERE id = %s", (site_id,))
-            row = await cur.fetchone()
-            if not row:
-                raise HTTPException(status_code=404, detail=f"网站不存在: id={site_id}")
-            await cur.execute("UPDATE sites SET hidden = 1 WHERE id = %s", (site_id,))
-    return {"message": f"网站已隐藏: {row[0]}", "hidden": True}
+    site = await site_repo.get_site_by_id(site_id)
+    if not site:
+        raise HTTPException(status_code=404, detail=f"网站不存在: id={site_id}")
+    await site_repo.set_site_hidden(site_id, True)
+    return {"message": f"网站已隐藏: {site['name']}", "hidden": True}
 
 
 @router.post("/sites/{site_id}/unhide")
 async def unhide_site(site_id: int, _=Depends(verify_admin_token)):
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute("SELECT name FROM sites WHERE id = %s", (site_id,))
-            row = await cur.fetchone()
-            if not row:
-                raise HTTPException(status_code=404, detail=f"网站不存在: id={site_id}")
-            await cur.execute("UPDATE sites SET hidden = 0 WHERE id = %s", (site_id,))
-    return {"message": f"网站已显示: {row[0]}", "hidden": False}
+    site = await site_repo.get_site_by_id(site_id)
+    if not site:
+        raise HTTPException(status_code=404, detail=f"网站不存在: id={site_id}")
+    await site_repo.set_site_hidden(site_id, False)
+    return {"message": f"网站已显示: {site['name']}", "hidden": False}
 
 
 # ============ 订阅词管理 ============
@@ -295,30 +212,12 @@ async def delete_keyword(keyword_id: int, _=Depends(verify_admin_token)):
 
 @router.post("/batch-scrape")
 async def start_batch_scrape(mode: str = "yesterday", _=Depends(verify_admin_token)):
-    from routers.batch_scraper import create_batch_task, run_batch_scrape, get_latest_batch_task
+    from services.batch_task import create_batch_task, run_batch_scrape, get_latest_batch_task
     existing = get_latest_batch_task()
     if existing and existing.status == "running":
         raise HTTPException(status_code=400, detail="已有批量任务正在运行")
 
-    pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute(
-                "SELECT id, name, url, scraper_name, description, status, hidden FROM sites WHERE hidden = 0 ORDER BY id"
-            )
-            rows = await cur.fetchall()
-
-    active_sites = []
-    for row in rows:
-        active_sites.append({
-            "id": row[0],
-            "name": row[1],
-            "url": row[2],
-            "scraper_name": row[3],
-            "description": row[4] or "",
-            "status": row[5],
-            "hidden": bool(row[6]),
-        })
+    active_sites = await site_repo.list_sites(include_hidden=False)
 
     if not active_sites:
         raise HTTPException(status_code=400, detail="没有可爬取的网站（所有网站已隐藏）")
@@ -329,7 +228,7 @@ async def start_batch_scrape(mode: str = "yesterday", _=Depends(verify_admin_tok
 
 @router.get("/batch-scrape/latest")
 async def get_latest_batch_status(_=Depends(verify_admin_token)):
-    from routers.batch_scraper import get_latest_batch_task
+    from services.batch_task import get_latest_batch_task
     task = get_latest_batch_task()
     if not task:
         return {"status": "none", "message": "暂无批量任务"}
@@ -338,7 +237,7 @@ async def get_latest_batch_status(_=Depends(verify_admin_token)):
 
 @router.get("/batch-scrape/{task_id}")
 async def get_batch_status(task_id: str, _=Depends(verify_admin_token)):
-    from routers.batch_scraper import get_batch_task
+    from services.batch_task import get_batch_task
     task = get_batch_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -347,7 +246,7 @@ async def get_batch_status(task_id: str, _=Depends(verify_admin_token)):
 
 @router.get("/batch-scrape/{task_id}/sites/{site_id}/logs")
 async def get_site_logs(task_id: str, site_id: int, _=Depends(verify_admin_token)):
-    from routers.batch_scraper import get_batch_task
+    from services.batch_task import get_batch_task
     task = get_batch_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -364,7 +263,7 @@ async def get_site_logs(task_id: str, site_id: int, _=Depends(verify_admin_token
 
 @router.post("/batch-scrape/{task_id}/cancel")
 async def cancel_batch_scrape(task_id: str, _=Depends(verify_admin_token)):
-    from routers.batch_scraper import get_batch_task
+    from services.batch_task import get_batch_task
     task = get_batch_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="任务不存在")
@@ -376,7 +275,7 @@ async def cancel_batch_scrape(task_id: str, _=Depends(verify_admin_token)):
 
 @router.get("/tasks")
 async def get_all_tasks(_=Depends(verify_admin_token)):
-    from routers.batch_scraper import batch_tasks
+    from services.batch_task import batch_tasks
 
     all_tasks = []
 

@@ -1,54 +1,33 @@
 #!/usr/bin/env python3
 """
-爬虫运行入口 - 兼容性入口，实际逻辑已迁移至 scripts/run_scrapers.py
-
-用法不变：
-  python run_scrapers.py --all --yesterday
-  python run_scrapers.py --run cgbchina
-  python run_scrapers.py --list
-"""
-
-import sys
-from pathlib import Path
-
-# 确保项目根目录在 sys.path 中
-_PROJECT_ROOT = Path(__file__).parent
-if str(_PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT))
-
-# 委托给 scripts/run_scrapers.py
-from scripts.run_scrapers import main
-
-if __name__ == "__main__":
-    main()
-#!/usr/bin/env python3
-"""
 爬虫运行入口 - 方便快速测试所有爬虫
 
 用法:
-  python run_scrapers.py                        # 交互式选择
-  python run_scrapers.py --all                  # 运行所有爬虫 (latest 5, 并行)
-  python run_scrapers.py --all -s               # 运行所有爬虫 (串行)
-  python run_scrapers.py --run cgbchina         # 运行指定爬虫
-  python run_scrapers.py --run cgbchina icbc    # 运行多个爬虫 (并行)
-  python run_scrapers.py --all --yesterday      # 所有爬虫爬昨天数据
-  python run_scrapers.py --all --date 2026-07-01  # 所有爬虫爬指定日期
-  python run_scrapers.py --all --latest 10      # 所有爬虫爬最新10条
-  python run_scrapers.py --list                 # 列出所有可用爬虫
+  python scripts/run_scrapers.py                        # 交互式选择
+  python scripts/run_scrapers.py --all                  # 运行所有爬虫 (latest 5, 并行)
+  python scripts/run_scrapers.py --all -s               # 运行所有爬虫 (串行)
+  python scripts/run_scrapers.py --run cgbchina         # 运行指定爬虫
+  python scripts/run_scrapers.py --run cgbchina icbc    # 运行多个爬虫 (并行)
+  python scripts/run_scrapers.py --all --yesterday      # 所有爬虫爬昨天数据
+  python scripts/run_scrapers.py --all --date 2026-07-01  # 所有爬虫爬指定日期
+  python scripts/run_scrapers.py --all --latest 10      # 所有爬虫爬最新10条
+  python scripts/run_scrapers.py --list                 # 列出所有可用爬虫
 """
 
 import argparse
 import json
 import subprocess
 import sys
-import os
 import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-SCRAPERS_DIR = Path(__file__).parent / "scrapers"
-RAW_DATA_DIR = Path(__file__).parent / "raw_data"
-LOGS_DIR = Path(__file__).parent / "logs"
+# 确保项目根目录在 sys.path 中
+_PROJECT_ROOT = Path(__file__).parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from config.settings import SCRAPERS_DIR, RAW_DATA_DIR, LOGS_DIR
 
 
 def find_scrapers():
@@ -265,11 +244,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  python run_scrapers.py --list                  # 列出所有爬虫
-  python run_scrapers.py --run cgbchina          # 运行单个爬虫
-  python run_scrapers.py --all --yesterday       # 全部爬昨天
-  python run_scrapers.py --all --latest 10       # 全部爬最新10条
-  python run_scrapers.py                         # 交互式选择
+  python scripts/run_scrapers.py --list                  # 列出所有爬虫
+  python scripts/run_scrapers.py --run cgbchina          # 运行单个爬虫
+  python scripts/run_scrapers.py --all --yesterday       # 全部爬昨天
+  python scripts/run_scrapers.py --all --latest 10       # 全部爬最新10条
+  python scripts/run_scrapers.py                         # 交互式选择
         """,
     )
     parser.add_argument("--list", action="store_true", help="列出所有可用爬虫")

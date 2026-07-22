@@ -16,34 +16,21 @@
   /logs/{task_id}      - 任务日志
 """
 
-import os
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 # 加载 .env（必须在其他 import 之前）
-PROJECT_ROOT = Path(__file__).parent
-
-def _load_env():
-    env_path = PROJECT_ROOT / ".env"
-    if env_path.exists():
-        with open(env_path) as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith('#') and '=' in line:
-                    key, val = line.split('=', 1)
-                    os.environ.setdefault(key.strip(), val.strip())
-
-_load_env()
+from config.settings import PROJECT_ROOT, STATIC_DIR
 
 # 导入路由
 from routers.data import router as data_router
 from routers.scraper import router as scraper_router
 from routers.admin import router as admin_router
-from db import init_db, ensure_tables, close_db
+from core.database import init_db, close_db
+from core.schema import ensure_tables
+
 
 # 创建 FastAPI 应用
 @asynccontextmanager
@@ -55,10 +42,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="爬虫生成服务", version="2.0", lifespan=lifespan)
-
-# 项目目录
-STATIC_DIR = PROJECT_ROOT / "static"
-SCRAPERS_DIR = PROJECT_ROOT / "scrapers"
 
 # 注册路由
 app.include_router(data_router)

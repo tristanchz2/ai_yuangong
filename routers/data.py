@@ -4,11 +4,10 @@ import json
 
 from fastapi import APIRouter, HTTPException, Query
 
-from db import get_pool, PROVINCE_CITY_MAP
+from core.database import get_pool
+from config.constants import PROVINCE_CITY_MAP, DATA_CATEGORIES
 
 router = APIRouter(prefix="/api", tags=["数据展示"])
-
-DATA_CATEGORIES = ["采购公告", "结果公告", "其他"]
 
 
 @router.get("/categories")

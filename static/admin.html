@@ -440,11 +440,13 @@ async function deleteSite(id, name) {
 
 function openTaskModal() {
   document.getElementById('taskModal').classList.add('active');
+  document.body.style.overflow = 'hidden';
   loadTaskHistory();
 }
 
 function closeTaskModal() {
   document.getElementById('taskModal').classList.remove('active');
+  document.body.style.overflow = '';
   expandedTasks.clear();
 }
 
@@ -666,14 +668,14 @@ function renderBatchDetail(container, data) {
     const terminal = card.querySelector('.site-terminal');
     if (terminal && s.logs && s.logs.length > 0) {
       const existingCount = terminal.children.length;
-      const newLogs = s.logs.slice(-15);
-      if (newLogs.length > existingCount) {
+      const allLogs = s.logs;
+      if (allLogs.length > existingCount) {
         // 有新增日志行，只追加新的
         const wasTermAtBottom = terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight < 20;
-        for (let i = existingCount; i < newLogs.length; i++) {
+        for (let i = existingCount; i < allLogs.length; i++) {
           const div = document.createElement('div');
-          div.className = 'log-line' + logClass(newLogs[i]);
-          div.textContent = newLogs[i];
+          div.className = 'log-line' + logClass(allLogs[i]);
+          div.textContent = allLogs[i];
           terminal.appendChild(div);
         }
         if (wasTermAtBottom) terminal.scrollTop = terminal.scrollHeight;
@@ -683,8 +685,7 @@ function renderBatchDetail(container, data) {
       const termDiv = document.createElement('div');
       termDiv.className = 'site-terminal';
       termDiv.style.cssText = 'border-top:1px solid #eee;padding:10px;font-size:11px;line-height:1.6;max-height:200px;overflow-y:auto';
-      const newLogs = s.logs.slice(-15);
-      termDiv.innerHTML = newLogs.map(log => `<div class="log-line${logClass(log)}">${esc(log)}</div>`).join('');
+      termDiv.innerHTML = s.logs.map(log => `<div class="log-line${logClass(log)}">${esc(log)}</div>`).join('');
       card.appendChild(termDiv);
     }
   }
@@ -735,9 +736,8 @@ function buildSiteCardHtml(s) {
       </div>
     </div>`;
   if (s.logs && s.logs.length > 0) {
-    const newLogs = s.logs.slice(-15);
     html += `<div class="site-terminal" style="border-top:1px solid #eee;padding:10px;font-size:11px;line-height:1.6;max-height:200px;overflow-y:auto">
-      ${newLogs.map(log => `<div class="log-line${logClass(log)}">${esc(log)}</div>`).join('')}
+      ${s.logs.map(log => `<div class="log-line${logClass(log)}">${esc(log)}</div>`).join('')}
     </div>`;
   }
   html += '</div>';
