@@ -143,6 +143,15 @@
       "description": "",
       "status": "active",
       "hidden": false
+    },
+    {
+      "id": 17,
+      "name": "浦发银行采购供应商门户",
+      "url": "https://ebuy.spdb.com.cn/#/notice",
+      "scraper_name": "spdb",
+      "description": "浦发银行采购供应商门户",
+      "status": "active",
+      "hidden": false
     }
   ]
 }

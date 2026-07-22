@@ -209,6 +209,8 @@ async def _run_hermes_generate_step(task_id: str, url: str, custom_name: Optiona
             with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
                 log_content = f.read()
             task['error'] = log_content[-2000:] or f'{skill_name} 退出码 {process.returncode}'
+            # 清理失败遗留的爬虫文件（hermes 可能已写出文件但中途崩溃/被 kill）
+            await _cleanup_scraper_files(scraper_name)
             return False
 
         if not scraper_path.exists():
@@ -216,6 +218,8 @@ async def _run_hermes_generate_step(task_id: str, url: str, custom_name: Optiona
                 log_content = f.read()
             task['error'] = f'{skill_name} 爬虫文件未生成: {scraper_path}'
             task['log_preview'] = log_content[-1000:] if log_content else ''
+            # 清理可能残留的输出文件
+            await _cleanup_scraper_files(scraper_name)
             return False
 
         # 测试爬虫
@@ -305,6 +309,8 @@ async def _run_hermes_generate_step(task_id: str, url: str, custom_name: Optiona
 
     except Exception as e:
         task['error'] = str(e)
+        # 异常退出时清理残留的爬虫文件，避免垃圾数据
+        await _cleanup_scraper_files(scraper_name)
         return False
 
 

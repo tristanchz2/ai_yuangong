@@ -12,7 +12,7 @@ from config.settings import PROJECT_ROOT, SCRAPERS_DIR, RAW_DATA_DIR
 from core.database import get_pool
 from models.schemas import LoginRequest, LoginResponse, SiteCreate, SiteUpdate, KeywordCreate
 from services.subscription import ensure_subscription_table, drop_subscription_table
-from services.scraper_generator import run_hermes_generate, tasks as generate_tasks, derive_scraper_name
+from services.scraper_generator import run_hermes_generate, tasks as generate_tasks, derive_scraper_name, _cleanup_scraper_files
 import services.site_repo as site_repo
 
 router = APIRouter(prefix="/api/admin", tags=["管理员"])
@@ -90,8 +90,10 @@ async def add_site(site: SiteCreate, _=Depends(verify_admin_token)):
             task = generate_tasks.get(task_id)
             if task and task.get('status') != 'success':
                 await site_repo.delete_site(new_id)
+                await _cleanup_scraper_files(scraper_name)
         except Exception:
             await site_repo.delete_site(new_id)
+            await _cleanup_scraper_files(scraper_name)
 
     asyncio.create_task(generate_with_rollback())
 

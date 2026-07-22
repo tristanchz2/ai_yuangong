@@ -37,7 +37,6 @@ ai_yuangong/
 │   └── scrape_<name>.js   # 每个站点一个爬虫脚本
 ├── raw_data/              # 爬虫原始输出 JSON
 │   └── <name>_data.json
-├── sites.json             # 站点注册表 ← 注册新站点
 └── server.py              # FastAPI 主服务
 ```
 
@@ -221,10 +220,6 @@ node scrapers/scrape_<name>.js --latest 1
 2. `--latest 1` 能成功爬取至少 1 条数据
 3. `raw_data/<name>_data.json` 存在且 `rows` 非空
 4. content 字段有实际内容（不是空或只有标题）
-
-### Phase 4: 注册站点
-
-在 `sites.json` 添加新站点条目。
 
 ## 常见陷阱
 
