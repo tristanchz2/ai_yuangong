@@ -31,8 +31,10 @@ from openai import AsyncOpenAI
 # 数据库函数（本脚本作为子进程独立运行，会自行初始化连接池）
 from db import (
     init_db, close_db, get_all_subscription_keywords,
-    ensure_subscription_table, insert_bid, insert_bid_keywords,
-    insert_bid_subscription,
+    ensure_subscription_table, insert_bid,
+    insert_bid_subscription, ensure_scrape_idx_table, insert_scrape_idx,
+    get_yesterday_str, parse_service_region, get_all_provinces, insert_bid_province,
+    get_scraper_to_site_id_map, delete_bids_by_source_date,
 )
 
 # ──────────────────────────────────────────────
@@ -88,7 +90,7 @@ class ExtractedFields(BaseModel):
     )
     keywords: Optional[List[str]] = Field(
         default=None,
-        description="关键词，2个左右，最多不超过4个。要求：不要包含地区/省份（如北京、江苏）、产品类别（如服务类、工程类）等重复信息，每个关键词应是具体的业务关键词。注意：如果订阅词列表中已经包含了某个词，则不要在关键词中重复出现"
+        description="关键词，2个左右，最多不超过4个。要求：不要包含地区/省份（如北京、江苏）、产品类别（如服务类、工程类）等重复信息，每个关键词应是具体的业务关键词"
     )
     budget: Optional[float] = Field(
         default=None,
@@ -106,9 +108,9 @@ class ExtractedFields(BaseModel):
         default=None,
         description="服务类别，用一个词语概括，如：软件开发、装修工程、安保服务、设备采购等"
     )
-    service_province: Optional[Province] = Field(
+    service_region: Optional[str] = Field(
         default=None,
-        description="服务所在地/项目实施地所在省份（只能从枚举值中选择）"
+        description="服务所在地/项目实施地，格式为'省+市'拼接，如'广东深圳'、'江苏省南京市'、'北京北京'（直辖市省和市相同）。要求：省和市必须真实匹配（如深圳必须配广东）；若无法确定具体省市则留空"
     )
     service_location: Optional[str] = Field(
         default=None,
@@ -195,6 +197,29 @@ def normalize_province(value: Optional[str]) -> Optional[str]:
             if candidate in _PROVINCE_LIST:
                 return candidate
     return v  # 无法匹配，原样返回
+
+
+def parse_date_str(value) -> Optional[str]:
+    """将 LLM 输出的日期字符串解析为 YYYY-MM-DD 格式，无法解析则返回 None"""
+    if not value:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    # 已经是 YYYY-MM-DD
+    import re
+    m = re.match(r'^(\d{4})-(\d{1,2})-(\d{1,2})$', s)
+    if m:
+        return f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
+    # YYYY/MM/DD
+    m = re.match(r'^(\d{4})/(\d{1,2})/(\d{1,2})$', s)
+    if m:
+        return f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
+    # YYYY年MM月DD日
+    m = re.match(r'^(\d{4})年(\d{1,2})月(\d{1,2})日?$', s)
+    if m:
+        return f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
+    return None
 
 
 def normalize_budget(value) -> Optional[float]:
@@ -355,7 +380,6 @@ async def extract_batch(
             f"\n请对每条公告判断是否与这些订阅词相关。在每条结果中额外添加一个 \"subscription_matches\" 字段，"
             f"它是一个对象，key 为订阅词，value 为 1（相关）或 0（不相关）。"
             f"\n示例：\"subscription_matches\": {{\"云计算\": 1, \"装修\": 0}}"
-            f"\n注意：如果订阅词已经在 subscription_matches 中标记为 1，则不要在 keywords 字段中重复出现该词。"
         )
 
     # 构建批量 prompt
@@ -494,7 +518,7 @@ async def process_file(
             continue
         # 修正省份字段（LLM 可能输出 "福建省" → "福建"）
         extracted["purchaser_region"] = normalize_province(extracted.get("purchaser_region"))
-        extracted["service_province"] = normalize_province(extracted.get("service_province"))
+        # 服务省市由 service_region 字段在入库时经 parse_service_region 校验分离，此处无需处理
         # 预算转纯数字
         extracted["budget"] = normalize_budget(extracted.get("budget"))
         # 公告类型：LLM 判断优先——如果 LLM 判定为非标书(2)，直接尊重；否则优先用 raw_data 的 noticeType，再 fallback 到 LLM 数字映射，最后标题推断
@@ -718,12 +742,46 @@ async def async_main():
                 except Exception as e:
                     print(f"  ❌ {notice_type}/{source} ({date_str}): 写入失败 - {e}")
 
-    # ★ 写入数据库：将每条标书存入 bids 表 + bid_keywords 表 + 订阅词子表
+    # ★ 写入数据库：将每条标书存入 bids 表 + 订阅词子表 + 爬取索引表
     db_saved = 0
     if all_results and not _is_cancelled():
         print(f"\n💾 开始写入数据库...")
+        # 构建 scraper_name → site_id 映射（用 sites 表唯一 ID 作为索引表键，杠绝名称不一致问题）
+        scraper_to_site_id = await get_scraper_to_site_id_map()
+        # 读取每个 raw_data 文件的 source 字段，建立 中文source → scraper_name 映射
+        source_to_scraper: dict = {}
+        for fp in files:
+            try:
+                with open(fp, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                raw_source = d.get("source", "")
+                scraper = fp.stem[:-5] if fp.stem.endswith("_data") else fp.stem
+                if raw_source:
+                    source_to_scraper[raw_source] = scraper
+            except Exception:
+                pass
+        # 确保爬取索引表存在（每个 site_id + 昨天日期 一张表）
+        yesterday = get_yesterday_str()
+        ensured_site_ids: set = set()
+        for r in all_results:
+            src_name = r.get("source", "")
+            scraper = source_to_scraper.get(src_name, "")
+            sid = scraper_to_site_id.get(scraper)
+            if sid and sid not in ensured_site_ids:
+                await ensure_scrape_idx_table(sid, yesterday)
+                ensured_site_ids.add(sid)
+        # ★ 入库前清理旧数据：爬虫+LLM 均已成功，此时删除安全
+        for sid in ensured_site_ids:
+            try:
+                deleted = await delete_bids_by_source_date(sid, yesterday)
+                if deleted > 0:
+                    print(f"🗑️ 已清理旧数据: site_id={sid} ({yesterday}) 共 {deleted} 条")
+            except Exception as e:
+                print(f"⚠️ 清理旧数据失败 (site_id={sid}): {e}")
         # 构建订阅词 word -> id 的映射
         sub_word_to_id = {word: kid for kid, word in subscription_keywords}
+        # 构建省份 name -> id 的映射（用于省份索引表写入）
+        province_name_to_id = {name: pid for pid, name in await get_all_provinces()}
         for r in all_results:
             if _is_cancelled():
                 print(f"🛑 检测到取消信号，停止 DB 写入（已写入 {db_saved} 条）")
@@ -734,8 +792,15 @@ async def async_main():
                 # 准备 keywords JSON
                 keywords_list = r.get("keywords") or []
                 keywords_json = json.dumps(keywords_list, ensure_ascii=False) if keywords_list else None
+                # 校验并分离服务省市（省市对不上则返回 None）
+                service_province, service_city = parse_service_region(r.get("service_region"))
+                # 查找该条数据对应站点的唯一 ID
+                src_name = r.get("source", "")
+                scraper = source_to_scraper.get(src_name, "")
+                site_id = scraper_to_site_id.get(scraper)
                 # 插入 bids 主表
                 bid_data = {
+                    "site_id": site_id,
                     "source": r.get("source"),
                     "scrape_time": r.get("scrape_time"),
                     "url": r.get("url"),
@@ -743,21 +808,27 @@ async def async_main():
                     "title": r.get("title"),
                     "notice_type": r.get("notice_type"),
                     "publish_time": r.get("publish_time"),
+                    "publish_date": parse_date_str(r.get("publish_time")),
                     "bid_time": r.get("bid_time"),
+                    "bid_date": parse_date_str(r.get("bid_time")),
                     "summary": r.get("summary"),
                     "keywords_json": keywords_json,
                     "budget": r.get("budget"),
                     "purchaser": r.get("purchaser"),
                     "purchaser_region": r.get("purchaser_region"),
                     "service_category": r.get("service_category"),
-                    "service_province": r.get("service_province"),
+                    "service_province": service_province,
+                    "service_city": service_city,
                     "service_location": r.get("service_location"),
                     "remarks": r.get("remarks"),
                 }
                 bid_id = await insert_bid(bid_data)
-                # 插入提取关键词到 bid_keywords 表
-                if keywords_list:
-                    await insert_bid_keywords(bid_id, keywords_list)
+                # 写入爬取索引表（用 site_id 作为键，与删除逻辑统一）
+                if site_id:
+                    await insert_scrape_idx(site_id, yesterday, bid_id)
+                # 写入省份索引表（城市不建索引，查询时直接 WHERE service_city）
+                if service_province and service_province in province_name_to_id:
+                    await insert_bid_province(bid_id, province_name_to_id[service_province])
                 # 处理订阅词匹配：将匹配的 bid_id 插入对应订阅词子表
                 if sub_matches and isinstance(sub_matches, dict):
                     for word, matched in sub_matches.items():

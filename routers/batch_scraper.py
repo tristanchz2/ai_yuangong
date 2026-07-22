@@ -235,7 +235,7 @@ async def _run_site_pipeline(
     llm_sem: asyncio.Semaphore,
     mode_args: List[str],
 ):
-    """单个站点的完整流水线：爬虫 → LLM提取"""
+    """单个站点的完整流水线：爬虫 → LLM提取 → 清理旧数据 → 入库"""
     st.start_time = time.time()
 
     # 检查任务是否已被取消
@@ -498,15 +498,21 @@ async def _run_field_extraction(task: BatchScraperTask, st: SiteTask) -> bool:
 
 
 async def _count_extracted_records(source: str) -> int:
-    """统计指定源在 DB bids 表中的记录数"""
+    """统计指定源在 DB bids 表中的记录数（通过 site_id 查询，兼容旧数据的 source 名称查询）"""
     try:
-        from db import get_pool
+        from db import get_pool, get_site_id_by_scraper_name
+        site_id = await get_site_id_by_scraper_name(source)
         pool = await get_pool()
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    "SELECT COUNT(*) FROM bids WHERE source = %s", (source,)
-                )
+                if site_id:
+                    await cur.execute(
+                        "SELECT COUNT(*) FROM bids WHERE site_id = %s", (site_id,)
+                    )
+                else:
+                    await cur.execute(
+                        "SELECT COUNT(*) FROM bids WHERE source = %s", (source,)
+                    )
                 row = await cur.fetchone()
                 return row[0] if row else 0
     except Exception:

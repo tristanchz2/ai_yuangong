@@ -10,6 +10,11 @@
   .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; padding: 40px 20px; text-align: center; }
   .header h1 { font-size: 28px; margin-bottom: 8px; }
   .header .subtitle { font-size: 14px; opacity: 0.9; }
+  .header-data-inner { position: relative; display: flex; align-items: center; justify-content: center; }
+  .header-category { font-size: 26px; margin-bottom: 0; }
+  .header-home-icon { position: absolute; left: 0; top: 50%; transform: translateY(-50%); display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.18); border: 1px solid rgba(255,255,255,.45); border-radius: 8px; cursor: pointer; color: #fff; padding: 8px; transition: all .2s; }
+  .header-home-icon svg { display: block; }
+  .header-home-icon:hover { background: rgba(255,255,255,.35); transform: translateY(-50%) scale(1.08); }
   .container { max-width: 1200px; margin: 0 auto; padding: 30px 20px; }
   .category-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-top: 20px; }
   .category-card { background: #fff; border-radius: 16px; padding: 40px 30px; text-align: center; cursor: pointer; transition: all 0.3s; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
@@ -20,7 +25,6 @@
   .category-stats strong { color: #667eea; font-size: 20px; }
   .back-btn { display: inline-flex; align-items: center; gap: 6px; padding: 10px 20px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; font-size: 14px; color: #555; transition: all 0.2s; margin-bottom: 20px; }
   .back-btn:hover { background: #667eea; color: #fff; border-color: #667eea; }
-  .page-title { font-size: 20px; font-weight: 600; color: #1a1a2e; margin-bottom: 6px; }
   .page-meta { font-size: 13px; color: #888; margin-bottom: 20px; }
   .card { background: #fff; border-radius: 10px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.08); transition: box-shadow .2s; cursor: pointer; }
   .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.12); }
@@ -41,14 +45,59 @@
   .pagination button { padding: 8px 16px; border: 1px solid #d1d5db; background: #fff; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all .15s; }
   .pagination button:hover:not(:disabled) { background: #667eea; color: #fff; border-color: #667eea; }
   .pagination button:disabled { opacity: .4; cursor: default; }
-  .pagination .page-info { font-size: 14px; color: #555; min-width: 100px; text-align: center; }
-  .pagination .page-jump { display: flex; align-items: center; gap: 6px; margin-left: 12px; font-size: 14px; color: #555; }
-  .pagination .page-jump input { width: 52px; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; text-align: center; outline: none; }
-  .pagination .page-jump input:focus { border-color: #667eea; }
-  .pagination .page-jump button { padding: 6px 12px; }
-  .pagination .page-numbers { display: flex; gap: 4px; }
-  .pagination .page-numbers button { min-width: 36px; padding: 6px 10px; font-size: 13px; }
-  .pagination .page-numbers button.active { background: #667eea; color: #fff; border-color: #667eea; }
+  .pagination .page-input { width: 52px; padding: 7px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; text-align: center; outline: none; color: #333; -moz-appearance: textfield; appearance: textfield; }
+  .pagination .page-input::-webkit-outer-spin-button, .pagination .page-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .pagination .page-input:focus { border-color: #667eea; }
+  .pagination .page-total { font-size: 14px; color: #555; }
+  /* ===== 筛选按钮 ===== */
+  .filter-toggle { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px; background: #fff; border: 1px solid #d1d5db; border-radius: 8px; cursor: pointer; font-size: 14px; color: #555; transition: all .2s; margin-bottom: 16px; }
+  .filter-toggle:hover { border-color: #667eea; color: #667eea; }
+  .filter-toggle.active { background: #667eea; color: #fff; border-color: #667eea; }
+  .filter-toggle .ft-icon { font-size: 15px; }
+  /* ===== 侧边栏抽屉 ===== */
+  .sidebar-mask { position: fixed; inset: 0; background: rgba(0,0,0,.3); z-index: 200; opacity: 0; visibility: hidden; transition: all .25s; }
+  .sidebar-mask.open { opacity: 1; visibility: visible; }
+  .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 340px; background: #fff; z-index: 201; transform: translateX(-100%); transition: transform .25s ease; box-shadow: 4px 0 24px rgba(0,0,0,.1); display: flex; flex-direction: column; }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid #f0f0f0; }
+  .sidebar-header h3 { font-size: 16px; font-weight: 600; color: #1a1a2e; }
+  .sidebar-close { width: 30px; height: 30px; border: none; background: #f5f5f5; border-radius: 6px; cursor: pointer; font-size: 16px; color: #666; display: flex; align-items: center; justify-content: center; transition: all .15s; }
+  .sidebar-close:hover { background: #eee; color: #333; }
+  .sidebar-body { flex: 1; overflow-y: auto; padding: 16px 20px; scrollbar-width: none; }
+  .sidebar-body::-webkit-scrollbar { display: none; }
+  .sidebar-footer { padding: 14px 20px; border-top: 1px solid #f0f0f0; display: flex; flex-direction: column; gap: 8px; }
+  .sidebar-footer .sf-apply-btn { width: 100%; padding: 10px; border: none; background: #667eea; border-radius: 8px; font-size: 14px; color: #fff; cursor: pointer; transition: all .15s; font-weight: 600; }
+  .sidebar-footer .sf-apply-btn:hover { background: #5568d3; }
+  .sidebar-footer .sf-reset-btn { width: 100%; padding: 10px; border: 1px solid #d1d5db; background: #fff; border-radius: 8px; font-size: 14px; color: #666; cursor: pointer; transition: all .15s; }
+  .sidebar-footer .sf-reset-btn:hover { border-color: #dc2626; color: #dc2626; }
+  /* 筛选分区 */
+  .sf-section { margin-bottom: 20px; }
+  .sf-title { font-size: 13px; font-weight: 600; color: #555; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #f5f5f5; }
+  .sf-kw-list { max-height: 180px; overflow-y: auto; scrollbar-width: none; }
+  .sf-kw-list::-webkit-scrollbar { display: none; }
+  .sf-kw-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; cursor: pointer; font-size: 13px; color: #333; transition: background .12s; }
+  .sf-kw-item:hover { background: #f5f6ff; }
+  .sf-kw-item input { accent-color: #667eea; width: 14px; height: 14px; cursor: pointer; }
+  .sf-kw-actions { display: flex; gap: 8px; margin-top: 8px; }
+  .sf-kw-actions button { padding: 4px 12px; border: 1px solid #d1d5db; background: #fff; border-radius: 5px; font-size: 12px; cursor: pointer; color: #666; transition: all .12s; }
+  .sf-kw-actions button:hover { border-color: #667eea; color: #667eea; }
+  /* 省市选择框 */
+  .sf-region-selects { display: flex; gap: 8px; }
+  .sf-region-selects select { flex: 1; padding: 7px 10px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px; color: #333; outline: none; background: #fff; cursor: pointer; transition: border-color .15s; appearance: auto; }
+  .sf-region-selects select:focus { border-color: #667eea; }
+  /* 范围输入 */
+  .sf-range { display: flex; align-items: center; gap: 0; }
+  .sf-range input { flex: 1; min-width: 0; padding: 7px 10px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 13px; color: #333; outline: none; transition: border-color .15s; background: #fff; }
+  .sf-range input:focus { border-color: #667eea; }
+  .sf-range input::placeholder { color: #bbb; }
+  .sf-range .sf-sep { flex-shrink: 0; width: 28px; text-align: center; color: #bbb; font-size: 13px; }
+  .sf-range input[type="date"] { flex: 1; min-width: 0; padding: 7px 10px; font-size: 13px; }
+  /* 订阅词命中标签（灯泡） */
+  .bulb-wrap { position: relative; display: inline-block; margin-right: 5px; vertical-align: middle; }
+  .bulb { font-size: 16px; cursor: default; }
+  .bulb-tip { display: none; position: absolute; left: -10px; bottom: calc(100% + 8px); background: #1a1a2e; color: #fff; font-size: 12px; font-weight: 400; padding: 6px 12px; border-radius: 6px; white-space: nowrap; z-index: 50; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
+  .bulb-tip::after { content: ''; position: absolute; top: 100%; left: 18px; transform: translateX(-50%); border: 5px solid transparent; border-top-color: #1a1a2e; }
+  .bulb-wrap:hover .bulb-tip { display: block; }
   .back-to-top { position: fixed; right: 32px; bottom: 32px; width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; font-size: 20px; cursor: pointer; box-shadow: 0 4px 12px rgba(102,126,234,.4); display: flex; align-items: center; justify-content: center; opacity: 0; visibility: hidden; transition: all 0.3s; z-index: 999; }
   .back-to-top.visible { opacity: 1; visibility: visible; }
   .back-to-top:hover { transform: translateY(-3px); box-shadow: 0 6px 20px rgba(102,126,234,.5); }
@@ -57,49 +106,105 @@
   .detail-page { max-width: 900px; margin: 0 auto; }
   .detail-header { background: #fff; border-radius: 12px; padding: 32px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
   .detail-title { font-size: 22px; font-weight: 700; color: #1a1a2e; line-height: 1.5; margin-bottom: 16px; }
-  .detail-actions { display: flex; gap: 12px; flex-wrap: wrap; }
-  .btn-original { display: inline-flex; align-items: center; gap: 8px; padding: 12px 28px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 500; cursor: pointer; text-decoration: none; transition: all 0.2s; }
-  .btn-original:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(102,126,234,.4); }
-  .btn-back-list { display: inline-flex; align-items: center; gap: 6px; padding: 12px 28px; background: #fff; color: #555; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 15px; cursor: pointer; transition: all 0.2s; }
-  .btn-back-list:hover { background: #f5f5f5; border-color: #ccc; }
-  .detail-section { background: #fff; border-radius: 12px; padding: 28px 32px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
-  .detail-section-title { font-size: 16px; font-weight: 600; color: #1a1a2e; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 2px solid #f0f0f0; }
-  .detail-content { font-size: 14px; line-height: 1.8; color: #444; word-break: break-word; white-space: pre-wrap; }
   .detail-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 16px; padding: 16px; background: #f8f9fa; border-radius: 8px; }
   .meta-row { display: flex; align-items: center; gap: 8px; font-size: 14px; }
   .meta-label { color: #888; min-width: 70px; }
   .meta-value { color: #333; font-weight: 500; }
   .meta-link { display: inline-flex; align-items: center; gap: 4px; color: #667eea; text-decoration: none; font-size: 14px; }
   .meta-link:hover { text-decoration: underline; }
-  @media (max-width: 768px) { .card-row { grid-template-columns: 1fr; } .detail-header, .detail-section { padding: 20px; } .detail-meta { grid-template-columns: 1fr; } }
+  .detail-section { background: #fff; border-radius: 12px; padding: 28px 32px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.06); }
+  .detail-content { font-size: 14px; line-height: 1.8; color: #444; word-break: break-word; white-space: pre-wrap; }
+  @media (max-width: 768px) { .card-row { grid-template-columns: 1fr; } .detail-header, .detail-section { padding: 20px; } .detail-meta { grid-template-columns: 1fr; } .sidebar { width: 290px; } }
 </style>
 </head>
 <body>
 <div class="header">
-  <h1>招标数据展示</h1>
-  <div class="subtitle">点击分类查看详细数据</div>
+  <div id="headerHome">
+    <h1>招标数据展示</h1>
+    <div class="subtitle">点击分类查看详细数据</div>
+  </div>
+  <div id="headerData" class="hidden">
+    <div class="header-data-inner">
+      <button class="header-home-icon" onclick="showHome()" title="返回首页">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 L12 2.5 L21 9.5 V20 a2 2 0 0 1 -2 2 H5 a2 2 0 0 1 -2 -2 Z"/><path d="M9 22 V12 H15 V22"/></svg>
+      </button>
+      <h1 class="header-category" id="headerCategoryName"></h1>
+    </div>
+  </div>
 </div>
+
+<!-- 侧边栏遮罩 -->
+<div class="sidebar-mask" id="sidebarMask" onclick="closeSidebar()"></div>
+<!-- 筛选侧边栏 -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h3>筛选条件</h3>
+    <button class="sidebar-close" onclick="closeSidebar()">✕</button>
+  </div>
+  <div class="sidebar-body">
+    <div class="sf-section">
+      <div class="sf-title">订阅词</div>
+      <div class="sf-kw-list" id="kwList"></div>
+      <div class="sf-kw-actions">
+        <button onclick="selectAllKw()">全选</button>
+        <button onclick="clearKwFilter()">清空</button>
+      </div>
+    </div>
+    <div class="sf-section">
+      <div class="sf-title">服务地点</div>
+      <div class="sf-region-selects">
+        <select id="regionProvSelect" onchange="onProvSelectChange()"><option value="">全部地区</option></select>
+        <select id="regionCitySelect" onchange="onCitySelectChange()"><option value="">全部城市</option></select>
+      </div>
+    </div>
+    <div class="sf-section">
+      <div class="sf-title">预算范围（元）</div>
+      <div class="sf-range">
+        <input type="number" id="budgetMin" placeholder="最低" min="0">
+        <span class="sf-sep">~</span>
+        <input type="number" id="budgetMax" placeholder="最高" min="0">
+      </div>
+    </div>
+    <div class="sf-section">
+      <div class="sf-title">发布时间</div>
+      <div class="sf-range">
+        <input type="date" id="publishFrom">
+        <span class="sf-sep">~</span>
+        <input type="date" id="publishTo">
+      </div>
+    </div>
+    <div class="sf-section">
+      <div class="sf-title">招标时间</div>
+      <div class="sf-range">
+        <input type="date" id="bidFrom">
+        <span class="sf-sep">~</span>
+        <input type="date" id="bidTo">
+      </div>
+    </div>
+  </div>
+  <div class="sidebar-footer">
+    <button class="sf-apply-btn" onclick="applyAllFilters()">应用</button>
+    <button class="sf-reset-btn" onclick="resetAllFilters()">重置全部筛选</button>
+  </div>
+</div>
+
 <div class="container">
   <div id="homePage">
     <div class="category-grid" id="categoryGrid"><div class="loading">正在加载分类...</div></div>
   </div>
   <div id="dataPage" class="hidden">
-    <button class="back-btn" onclick="showHome()">← 返回首页</button>
-    <div class="page-title" id="dataPageTitle"></div>
+    <button class="filter-toggle" id="filterToggleBtn" onclick="openSidebar()" style="display:none">
+      <span class="ft-icon">⚙</span> 筛选
+    </button>
     <div class="page-meta" id="dataPageMeta"></div>
     <div id="cardContainer"></div>
     <div class="pagination" id="pagination" style="display:none">
       <button id="firstBtn" onclick="goPage(1)">首页</button>
       <button id="prevBtn" onclick="goPage(currentPage-1)">上一页</button>
-      <div class="page-numbers" id="pageNumbers"></div>
+      <input type="number" class="page-input" id="pageInput" min="1" onkeydown="if(event.key==='Enter')doJump()">
+      <span class="page-total">/ <span id="totalPagesSpan"></span></span>
       <button id="nextBtn" onclick="goPage(currentPage+1)">下一页</button>
-      <button id="lastBtn" onclick="goPage(totalPages)">末页</button>
-      <span class="page-info" id="pageInfo"></span>
-      <div class="page-jump">
-        <span>跳至</span>
-        <input type="number" id="jumpInput" min="1" onkeydown="if(event.key==='Enter')doJump()">
-        <button onclick="doJump()">GO</button>
-      </div>
+      <button id="lastBtn" onclick="goPage(totalPages)">尾页</button>
     </div>
   </div>
   <div id="detailPage" class="hidden">
@@ -124,13 +229,61 @@ let currentPage = 1;
 let totalPages = 1;
 let totalRecords = 0;
 let currentCategory = "";
+let subscriptionKeywords = [];
+let selectedKeywordIds = new Set();
+let provincesData = [];
+let selectedProvinceId = "";
+let selectedCity = "";
 
+// ============ 侧边栏开关 ============
+function openSidebar() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebarMask').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarMask').classList.remove('open');
+  document.body.style.overflow = '';
+}
+function updateFilterToggleState() {
+  const btn = document.getElementById('filterToggleBtn');
+  const hasFilter = selectedKeywordIds.size > 0 || selectedProvinceId ||
+    document.getElementById('budgetMin').value || document.getElementById('budgetMax').value ||
+    document.getElementById('publishFrom').value || document.getElementById('publishTo').value ||
+    document.getElementById('bidFrom').value || document.getElementById('bidTo').value;
+  btn.classList.toggle('active', !!hasFilter);
+}
+function applyAllFilters() {
+  // 读取订阅词勾选状态
+  selectedKeywordIds.clear();
+  document.querySelectorAll('#kwList input:checked').forEach(cb => selectedKeywordIds.add(parseInt(cb.value)));
+  updateFilterToggleState();
+  closeSidebar();
+  showCategory(currentCategory, 1);
+}
+function resetAllFilters() {
+  selectedKeywordIds.clear();
+  selectedProvinceId = '';
+  selectedCity = '';
+  document.getElementById('budgetMin').value = '';
+  document.getElementById('budgetMax').value = '';
+  document.getElementById('publishFrom').value = '';
+  document.getElementById('publishTo').value = '';
+  document.getElementById('bidFrom').value = '';
+  document.getElementById('bidTo').value = '';
+  renderKwList();
+  renderRegionSelects();
+  updateFilterToggleState();
+  showCategory(currentCategory, 1);
+}
+
+// ============ 页面导航 ============
 async function loadCategories() {
   try {
     const resp = await fetch('/api/categories?t=' + Date.now());
     const data = await resp.json();
-    const grid = document.getElementById('categoryGrid');
-    grid.innerHTML = data.categories.map(cat => {
+    document.getElementById('categoryGrid').innerHTML = data.categories.map(cat => {
       const icon = ICONS[cat.name] || '📂';
       const extTime = cat.latestExtractedAt ? new Date(cat.latestExtractedAt).toLocaleString('zh-CN') : '暂无数据';
       return `<div class="category-card" onclick="showCategory('${cat.name}')"><div class="category-icon">${icon}</div><div class="category-name">${cat.name}</div><div class="category-stats">共 <strong>${cat.totalRecords}</strong> 条记录<br>数据来源：${cat.fileCount} 个平台<br>最近更新：${extTime}</div></div>`;
@@ -146,12 +299,35 @@ async function showCategory(category, page = 1) {
   document.getElementById('homePage').classList.add('hidden');
   document.getElementById('dataPage').classList.remove('hidden');
   document.getElementById('detailPage').classList.add('hidden');
-  document.getElementById('dataPageTitle').textContent = category;
+  document.getElementById('headerHome').classList.add('hidden');
+  document.getElementById('headerData').classList.remove('hidden');
+  document.getElementById('headerCategoryName').textContent = category;
   document.getElementById('dataPageMeta').textContent = '加载中...';
   document.getElementById('cardContainer').innerHTML = '<div class="loading">正在加载数据...</div>';
   document.getElementById('pagination').style.display = 'none';
+  document.getElementById('filterToggleBtn').style.display = 'inline-flex';
+  loadSubscriptionKeywords();
+  loadProvinces();
   try {
-    const resp = await fetch(`/api/data/${encodeURIComponent(category)}?page=${page}&page_size=${PER_PAGE}&t=` + Date.now());
+    let kwParam = '';
+    if (selectedKeywordIds.size) kwParam = '&keyword_ids=' + [...selectedKeywordIds].join(',');
+    let regionParam = '';
+    if (selectedProvinceId) regionParam += '&province_ids=' + selectedProvinceId;
+    if (selectedCity) regionParam += '&city=' + encodeURIComponent(selectedCity);
+    let rangeParam = '';
+    const bMin = document.getElementById('budgetMin').value;
+    const bMax = document.getElementById('budgetMax').value;
+    if (bMin) rangeParam += '&budget_min=' + bMin;
+    if (bMax) rangeParam += '&budget_max=' + bMax;
+    const pFrom = document.getElementById('publishFrom').value;
+    const pTo = document.getElementById('publishTo').value;
+    if (pFrom) rangeParam += '&publish_date_from=' + pFrom;
+    if (pTo) rangeParam += '&publish_date_to=' + pTo;
+    const dFrom = document.getElementById('bidFrom').value;
+    const dTo = document.getElementById('bidTo').value;
+    if (dFrom) rangeParam += '&bid_date_from=' + dFrom;
+    if (dTo) rangeParam += '&bid_date_to=' + dTo;
+    const resp = await fetch(`/api/data/${encodeURIComponent(category)}?page=${page}&page_size=${PER_PAGE}${kwParam}${regionParam}${rangeParam}&t=` + Date.now());
     const data = await resp.json();
     allRecords = data.records || [];
     totalRecords = data.totalRecords || 0;
@@ -167,101 +343,118 @@ function showHome() {
   document.getElementById('dataPage').classList.add('hidden');
   document.getElementById('detailPage').classList.add('hidden');
   document.getElementById('homePage').classList.remove('hidden');
+  document.getElementById('headerData').classList.add('hidden');
+  document.getElementById('headerHome').classList.remove('hidden');
   allRecords = [];
   loadCategories();
 }
 
 function renderCards() {
   document.getElementById('cardContainer').innerHTML = allRecords.map((r, i) => {
-    const globalIdx = (currentPage - 1) * PER_PAGE + i;
     const budgetStr = r.budget != null ? '¥' + Number(r.budget).toLocaleString('zh-CN', {minimumFractionDigits:2, maximumFractionDigits:2}) : '-';
     const keywords = (r.keywords || []).map(k => `<span class="kw">${esc(k)}</span>`).join('');
-    return `<div class="card" onclick="showDetail(${i})"><div class="card-title">${esc(r.title||'无标题')}</div><div class="tags"><span class="tag source">${esc(r.source||'')}</span><span class="tag region">${esc(r.purchaser_region||'')}</span></div><div class="card-row"><div><span class="label">发布时间：</span><span class="value">${esc(r.publish_time||'-')}</span></div><div><span class="label">招标时间：</span><span class="value">${esc(r.bid_time||'-')}</span></div><div><span class="label">采购人：</span><span class="value">${esc(r.purchaser||'-')}</span></div><div><span class="label">预算：</span><span class="value budget">${budgetStr}</span></div><div><span class="label">服务类别：</span><span class="value">${esc(r.service_category||'-')}</span></div><div><span class="label">服务地点：</span><span class="value">${esc(r.service_location||'-')}</span></div></div><div class="summary">${esc(r.summary||'')}</div><div class="keywords">${keywords}</div></div>`;
+    const bulb = (r.matched_keywords && r.matched_keywords.length)
+      ? `<span class="bulb-wrap"><span class="bulb">💡</span><span class="bulb-tip">订阅词：${r.matched_keywords.map(esc).join('、')}</span></span>` : '';
+    return `<div class="card" onclick="showDetail(${i})"><div class="card-title">${bulb}${esc(r.title||'无标题')}</div><div class="tags"><span class="tag source">${esc(r.source||'')}</span><span class="tag region">${esc(r.purchaser_region||'')}</span></div><div class="card-row"><div><span class="label">发布时间：</span><span class="value">${esc(r.publish_time||'-')}</span></div><div><span class="label">招标时间：</span><span class="value">${esc(r.bid_time||'-')}</span></div><div><span class="label">采购人：</span><span class="value">${esc(r.purchaser||'-')}</span></div><div><span class="label">预算：</span><span class="value budget">${budgetStr}</span></div><div><span class="label">服务类别：</span><span class="value">${esc(r.service_category||'-')}</span></div><div><span class="label">服务地点：</span><span class="value">${esc(r.service_location||'-')}</span></div></div><div class="summary">${esc(r.summary||'')}</div><div class="keywords">${keywords}</div></div>`;
   }).join('');
   const pag = document.getElementById('pagination');
   pag.style.display = totalPages > 1 ? 'flex' : 'none';
-  document.getElementById('pageInfo').textContent = `${currentPage} / ${totalPages}`;
+  document.getElementById('pageInput').value = currentPage;
+  document.getElementById('pageInput').max = totalPages;
+  document.getElementById('totalPagesSpan').textContent = totalPages;
   document.getElementById('prevBtn').disabled = currentPage <= 1;
   document.getElementById('nextBtn').disabled = currentPage >= totalPages;
   document.getElementById('firstBtn').disabled = currentPage <= 1;
   document.getElementById('lastBtn').disabled = currentPage >= totalPages;
-  // 渲染页码按钮
-  const pnContainer = document.getElementById('pageNumbers');
-  let pnHtml = '';
-  const maxVisible = 5;
-  let startP = Math.max(1, currentPage - Math.floor(maxVisible / 2));
-  let endP = Math.min(totalPages, startP + maxVisible - 1);
-  if (endP - startP < maxVisible - 1) startP = Math.max(1, endP - maxVisible + 1);
-  if (startP > 1) pnHtml += `<button onclick="goPage(1)">1</button><span style="color:#999">...</span>`;
-  for (let i = startP; i <= endP; i++) {
-    pnHtml += `<button class="${i === currentPage ? 'active' : ''}" onclick="goPage(${i})">${i}</button>`;
-  }
-  if (endP < totalPages) pnHtml += `<span style="color:#999">...</span><button onclick="goPage(${totalPages})">${totalPages}</button>`;
-  pnContainer.innerHTML = pnHtml;
 }
 
-function goPage(p) {
-  if (p < 1 || p > totalPages) return;
-  showCategory(currentCategory, p);
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-
+function goPage(p) { if (p < 1 || p > totalPages) return; showCategory(currentCategory, p); window.scrollTo({top:0,behavior:'smooth'}); }
 function doJump() {
-  const input = document.getElementById('jumpInput');
+  const input = document.getElementById('pageInput');
   const p = parseInt(input.value);
-  if (p >= 1 && p <= totalPages) {
-    goPage(p);
-    input.value = '';
-  } else {
-    input.style.borderColor = '#dc2626';
-    setTimeout(() => input.style.borderColor = '#d1d5db', 1000);
-  }
+  if (p >= 1 && p <= totalPages && p !== currentPage) goPage(p);
+  else { input.style.borderColor = '#dc2626'; setTimeout(() => input.style.borderColor = '#d1d5db', 1000); input.value = currentPage; }
 }
 
+// ============ 订阅词 ============
+async function loadSubscriptionKeywords() {
+  try {
+    const resp = await fetch('/api/subscription-keywords?t=' + Date.now());
+    const data = await resp.json();
+    subscriptionKeywords = data.keywords || [];
+    renderKwList();
+  } catch (e) { subscriptionKeywords = []; }
+}
+function renderKwList() {
+  const list = document.getElementById('kwList');
+  if (!subscriptionKeywords.length) { list.innerHTML = '<div style="padding:10px;font-size:12px;color:#999;text-align:center">暂无订阅词</div>'; return; }
+  list.innerHTML = subscriptionKeywords.map(k =>
+    `<label class="sf-kw-item"><input type="checkbox" value="${k.id}" ${selectedKeywordIds.has(k.id)?'checked':''} onchange="onKwChange()"><span>${esc(k.word)}</span></label>`
+  ).join('');
+}
+function onKwChange() {
+  selectedKeywordIds.clear();
+  document.querySelectorAll('#kwList input:checked').forEach(cb => selectedKeywordIds.add(parseInt(cb.value)));
+  updateFilterToggleState();
+}
+function selectAllKw() { document.querySelectorAll('#kwList input').forEach(cb => cb.checked = true); onKwChange(); }
+function clearKwFilter() { document.querySelectorAll('#kwList input').forEach(cb => cb.checked = false); onKwChange(); }
+
+// ============ 省市选择 ============
+async function loadProvinces() {
+  if (!provincesData.length) {
+    try { const resp = await fetch('/api/provinces?t=' + Date.now()); const data = await resp.json(); provincesData = (data.provinces || []).filter(p => p.name !== '台湾'); } catch(e) { provincesData = []; }
+  }
+  renderRegionSelects();
+}
+function renderRegionSelects() {
+  const provSel = document.getElementById('regionProvSelect');
+  provSel.innerHTML = '<option value="">全部地区</option>' +
+    provincesData.map(p => `<option value="${p.id}" ${String(p.id)===String(selectedProvinceId)?'selected':''}>${esc(p.name)}</option>`).join('');
+  renderCitySelect();
+}
+function renderCitySelect() {
+  const citySel = document.getElementById('regionCitySelect');
+  const prov = provincesData.find(p => String(p.id) === String(selectedProvinceId));
+  if (!prov) { citySel.innerHTML = '<option value="">全部城市</option>'; citySel.disabled = true; return; }
+  citySel.disabled = false;
+  const cities = prov.cities || [];
+  citySel.innerHTML = '<option value="">全部城市</option>' +
+    cities.map(c => `<option value="${esc(c)}" ${c===selectedCity?'selected':''}>${esc(c)}</option>`).join('');
+}
+function onProvSelectChange() {
+  selectedProvinceId = document.getElementById('regionProvSelect').value;
+  selectedCity = '';
+  renderCitySelect();
+  updateFilterToggleState();
+}
+function onCitySelectChange() {
+  selectedCity = document.getElementById('regionCitySelect').value;
+  updateFilterToggleState();
+}
+
+// ============ 详情页 ============
 function showDetail(index) {
-  const r = allRecords[index];
-  if (!r) return;
+  const r = allRecords[index]; if (!r) return;
   document.getElementById('homePage').classList.add('hidden');
   document.getElementById('dataPage').classList.add('hidden');
   document.getElementById('detailPage').classList.remove('hidden');
-  
   document.getElementById('detailTitle').textContent = r.title || '无标题';
   document.getElementById('detailMeta').innerHTML = `
     <div class="meta-row"><span class="meta-label">发布时间：</span><span class="meta-value">${esc(r.publish_time||'-')}</span></div>
     <div class="meta-row"><span class="meta-label">截止时间：</span><span class="meta-value">${esc(r.bid_time||'-')}</span></div>
     <div class="meta-row"><span class="meta-label">服务地点：</span><span class="meta-value">${esc(r.service_location||'-')}</span></div>
-    <div class="meta-row"><span class="meta-label">预算：</span><span class="meta-value budget">${r.budget ? '¥' + Number(r.budget).toLocaleString('zh-CN', {minimumFractionDigits:2, maximumFractionDigits:2}) : '-'}</span></div>
+    <div class="meta-row"><span class="meta-label">预算：</span><span class="meta-value budget">${r.budget ? '¥'+Number(r.budget).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2}) : '-'}</span></div>
     <div class="meta-row"><span class="meta-label">来源：</span><span class="meta-value">${esc(r.source||'-')}</span></div>
-    ${r.url ? `<a href="${esc(r.url)}" target="_blank" class="meta-link" title="查看原文">🔗 原文链接</a>` : ''}
-  `;
-  
-  const el = document.getElementById('detailContent');
-  el.textContent = r.content || '暂无正文内容';
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+    ${r.url ? `<a href="${esc(r.url)}" target="_blank" class="meta-link">🔗 原文链接</a>` : ''}`;
+  document.getElementById('detailContent').textContent = r.content || '暂无正文内容';
+  window.scrollTo({top:0,behavior:'smooth'});
 }
+function goBackFromDetail() { document.getElementById('detailPage').classList.add('hidden'); document.getElementById('dataPage').classList.remove('hidden'); }
 
-function goBackFromDetail() {
-  document.getElementById('detailPage').classList.add('hidden');
-  document.getElementById('dataPage').classList.remove('hidden');
-}
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
-function esc(s) {
-  if (!s) return '';
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
-}
-
-// 回到顶部按钮显隐
-window.addEventListener('scroll', () => {
-  const btn = document.getElementById('backToTop');
-  if (window.scrollY > 300) {
-    btn.classList.add('visible');
-  } else {
-    btn.classList.remove('visible');
-  }
-});
-
+window.addEventListener('scroll', () => { document.getElementById('backToTop').classList.toggle('visible', window.scrollY > 300); });
 loadCategories();
 </script>
 </body>
