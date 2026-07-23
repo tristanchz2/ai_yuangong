@@ -10,7 +10,6 @@ PROJECT_ROOT = Path(__file__).parent.parent
 STATIC_DIR = PROJECT_ROOT / "static"
 SCRAPERS_DIR = PROJECT_ROOT / "scrapers"
 RAW_DATA_DIR = PROJECT_ROOT / "raw_data"
-OUTPUT_DIR = PROJECT_ROOT / "extracted_data"
 LOGS_DIR = PROJECT_ROOT / "logs"
 EXTRACT_SCRIPT = PROJECT_ROOT / "scripts" / "extract_fields.py"
 

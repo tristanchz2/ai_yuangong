@@ -92,6 +92,34 @@
   .sf-range input::placeholder { color: #bbb; }
   .sf-range .sf-sep { flex-shrink: 0; width: 28px; text-align: center; color: #bbb; font-size: 13px; }
   .sf-range input[type="date"] { flex: 1; min-width: 0; padding: 7px 10px; font-size: 13px; }
+  /* 数据来源选择按钮与摘要 */
+  .sf-source-select-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 20px; border: 1px solid #d1d5db; background: #fff; border-radius: 6px; font-size: 13px; color: #555; cursor: pointer; transition: all .15s; }
+  .sf-source-select-btn:hover { border-color: #667eea; color: #667eea; }
+  .sf-source-summary { margin-top: 8px; font-size: 12px; color: #888; line-height: 1.7; word-break: break-all; }
+  /* 来源选择弹窗 */
+  .src-modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 300; display: flex; align-items: center; justify-content: center; opacity: 0; visibility: hidden; transition: all .2s; }
+  .src-modal-mask.open { opacity: 1; visibility: visible; }
+  .src-modal { background: #fff; border-radius: 14px; width: 720px; max-width: calc(100vw - 40px); height: 76vh; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,.2); transform: scale(.94); transition: transform .2s; }
+  .src-modal-mask.open .src-modal { transform: scale(1); }
+  .src-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid #f0f0f0; flex-shrink: 0; }
+  .src-modal-header h3 { font-size: 16px; font-weight: 600; color: #1a1a2e; }
+  .src-modal-search { padding: 12px 20px 4px; flex-shrink: 0; }
+  .src-modal-search input { width: 100%; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; outline: none; transition: border-color .15s; }
+  .src-modal-search input:focus { border-color: #667eea; }
+  .src-modal-body { flex: 1; overflow-y: auto; padding: 10px 14px; scrollbar-width: thin; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; align-content: start; }
+  .src-item { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: 6px; cursor: pointer; font-size: 13px; color: #333; transition: background .12s; min-width: 0; }
+  .src-item:hover { background: #f5f6ff; }
+  .src-item input { accent-color: #667eea; width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; }
+  .src-item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .src-modal-footer { padding: 14px 20px; border-top: 1px solid #f0f0f0; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .sm-actions { display: flex; gap: 8px; }
+  .sm-actions button { padding: 6px 14px; border: 1px solid #d1d5db; background: #fff; border-radius: 6px; font-size: 12px; cursor: pointer; color: #666; transition: all .12s; }
+  .sm-actions button:hover { border-color: #667eea; color: #667eea; }
+  .sm-btns { display: flex; gap: 10px; }
+  .src-modal-footer .sm-cancel { padding: 8px 20px; border: 1px solid #d1d5db; background: #fff; border-radius: 8px; font-size: 14px; color: #666; cursor: pointer; transition: all .15s; }
+  .src-modal-footer .sm-cancel:hover { border-color: #999; color: #333; }
+  .src-modal-footer .sm-confirm { padding: 8px 20px; border: none; background: #667eea; border-radius: 8px; font-size: 14px; color: #fff; cursor: pointer; font-weight: 600; transition: all .15s; }
+  .src-modal-footer .sm-confirm:hover { background: #5568d3; }
   /* 订阅词命中标签（灯泡） */
   .bulb-wrap { position: relative; display: inline-block; margin-right: 5px; vertical-align: middle; }
   .bulb { font-size: 16px; cursor: default; }
@@ -143,6 +171,11 @@
   </div>
   <div class="sidebar-body">
     <div class="sf-section">
+      <div class="sf-title">数据来源</div>
+      <button class="sf-source-select-btn" onclick="openSourceModal()">选择</button>
+      <div class="sf-source-summary" id="sourceSummary"></div>
+    </div>
+    <div class="sf-section">
       <div class="sf-title">订阅词</div>
       <div class="sf-kw-list" id="kwList"></div>
       <div class="sf-kw-actions">
@@ -185,6 +218,30 @@
   <div class="sidebar-footer">
     <button class="sf-apply-btn" onclick="applyAllFilters()">应用</button>
     <button class="sf-reset-btn" onclick="resetAllFilters()">重置全部筛选</button>
+  </div>
+</div>
+
+<!-- 数据来源选择弹窗 -->
+<div class="src-modal-mask" id="srcModalMask" onclick="onSrcMaskClick(event)">
+  <div class="src-modal">
+    <div class="src-modal-header">
+      <h3>选择数据来源</h3>
+      <button class="sidebar-close" onclick="closeSourceModal()">✕</button>
+    </div>
+    <div class="src-modal-search">
+      <input type="text" id="srcSearchInput" placeholder="搜索来源名称..." oninput="onSrcSearch()">
+    </div>
+    <div class="src-modal-body" id="srcModalList"></div>
+    <div class="src-modal-footer">
+      <div class="sm-actions">
+        <button onclick="srcModalSelectAll()">全选</button>
+        <button onclick="srcModalClearAll()">清空</button>
+      </div>
+      <div class="sm-btns">
+        <button class="sm-cancel" onclick="closeSourceModal()">取消</button>
+        <button class="sm-confirm" onclick="confirmSourceModal()">确定</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -231,6 +288,8 @@ let totalRecords = 0;
 let currentCategory = "";
 let subscriptionKeywords = [];
 let selectedKeywordIds = new Set();
+let sourcesData = [];
+let selectedSiteIds = new Set();
 let provincesData = [];
 let selectedProvinceId = "";
 let selectedCity = "";
@@ -248,14 +307,14 @@ function closeSidebar() {
 }
 function updateFilterToggleState() {
   const btn = document.getElementById('filterToggleBtn');
-  const hasFilter = selectedKeywordIds.size > 0 || selectedProvinceId ||
+  const hasFilter = selectedSiteIds.size > 0 || selectedKeywordIds.size > 0 || selectedProvinceId ||
     document.getElementById('budgetMin').value || document.getElementById('budgetMax').value ||
     document.getElementById('publishFrom').value || document.getElementById('publishTo').value ||
     document.getElementById('bidFrom').value || document.getElementById('bidTo').value;
   btn.classList.toggle('active', !!hasFilter);
 }
 function applyAllFilters() {
-  // 读取订阅词勾选状态
+  // 读取订阅词勾选状态（来源已在弹窗确定时同步到 selectedSiteIds）
   selectedKeywordIds.clear();
   document.querySelectorAll('#kwList input:checked').forEach(cb => selectedKeywordIds.add(parseInt(cb.value)));
   updateFilterToggleState();
@@ -263,6 +322,7 @@ function applyAllFilters() {
   showCategory(currentCategory, 1);
 }
 function resetAllFilters() {
+  selectedSiteIds.clear();
   selectedKeywordIds.clear();
   selectedProvinceId = '';
   selectedCity = '';
@@ -272,6 +332,7 @@ function resetAllFilters() {
   document.getElementById('publishTo').value = '';
   document.getElementById('bidFrom').value = '';
   document.getElementById('bidTo').value = '';
+  renderSourceSummary();
   renderKwList();
   renderRegionSelects();
   updateFilterToggleState();
@@ -306,9 +367,12 @@ async function showCategory(category, page = 1) {
   document.getElementById('cardContainer').innerHTML = '<div class="loading">正在加载数据...</div>';
   document.getElementById('pagination').style.display = 'none';
   document.getElementById('filterToggleBtn').style.display = 'inline-flex';
+  loadSources();
   loadSubscriptionKeywords();
   loadProvinces();
   try {
+    let siteParam = '';
+    if (selectedSiteIds.size) siteParam = '&site_ids=' + [...selectedSiteIds].join(',');
     let kwParam = '';
     if (selectedKeywordIds.size) kwParam = '&keyword_ids=' + [...selectedKeywordIds].join(',');
     let regionParam = '';
@@ -327,7 +391,7 @@ async function showCategory(category, page = 1) {
     const dTo = document.getElementById('bidTo').value;
     if (dFrom) rangeParam += '&bid_date_from=' + dFrom;
     if (dTo) rangeParam += '&bid_date_to=' + dTo;
-    const resp = await fetch(`/api/data/${encodeURIComponent(category)}?page=${page}&page_size=${PER_PAGE}${kwParam}${regionParam}${rangeParam}&t=` + Date.now());
+    const resp = await fetch(`/api/data/${encodeURIComponent(category)}?page=${page}&page_size=${PER_PAGE}${siteParam}${kwParam}${regionParam}${rangeParam}&t=` + Date.now());
     const data = await resp.json();
     allRecords = data.records || [];
     totalRecords = data.totalRecords || 0;
@@ -374,6 +438,114 @@ function doJump() {
   const p = parseInt(input.value);
   if (p >= 1 && p <= totalPages && p !== currentPage) goPage(p);
   else { input.style.borderColor = '#dc2626'; setTimeout(() => input.style.borderColor = '#d1d5db', 1000); input.value = currentPage; }
+}
+
+// ============ 数据来源 ============
+async function loadSources() {
+  try {
+    const resp = await fetch('/api/sources?t=' + Date.now());
+    const data = await resp.json();
+    sourcesData = data.sources || [];
+    renderSourceSummary();
+  } catch (e) { sourcesData = []; }
+}
+// ---- 来源摘要（最多两行，超出省略，共k个来源始终拼在末尾） ----
+function renderSourceSummary() {
+  const el = document.getElementById('sourceSummary');
+  if (!selectedSiteIds.size) { el.textContent = '当前选择：未选择来源'; return; }
+  const names = sourcesData.filter(s => selectedSiteIds.has(s.id)).map(s => s.name);
+  const k = names.length;
+  const suffix = ` 共${k}个来源`;
+  const prefix = '当前选择：';
+  // 用隐藏元素测量是否超出两行
+  const meas = document.createElement('div');
+  meas.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;white-space:normal;word-break:break-all;';
+  const cs = window.getComputedStyle(el);
+  meas.style.width = cs.width;
+  meas.style.font = cs.font;
+  meas.style.lineHeight = cs.lineHeight;
+  meas.style.letterSpacing = cs.letterSpacing;
+  document.body.appendChild(meas);
+  const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.7;
+  const maxH = lh * 2 + 1;
+  const fits = (t) => { meas.textContent = t; return meas.offsetHeight <= maxH; };
+  let text;
+  const full = prefix + names.join('，') + suffix;
+  if (fits(full)) {
+    text = full;
+  } else {
+    // 超出两行：保留尽可能多的靠前来源，其余用 ... 省略，总数始终置于末尾
+    let n = k - 1;
+    const build = () => prefix + names.slice(0, n).join('，') + '，...' + suffix;
+    while (n > 1 && !fits(build())) n--;
+    text = build();
+  }
+  document.body.removeChild(meas);
+  el.textContent = text;
+}
+// ---- 来源选择弹窗 ----
+function openSourceModal() {
+  document.getElementById('srcSearchInput').value = '';
+  renderSrcModalList();
+  document.getElementById('srcModalMask').classList.add('open');
+}
+function closeSourceModal() {
+  document.getElementById('srcModalMask').classList.remove('open');
+}
+function onSrcMaskClick(e) {
+  if (e.target === document.getElementById('srcModalMask')) closeSourceModal();
+}
+function onSrcSearch() { renderSrcModalList(); }
+function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+// 模糊匹配：关键词字符按顺序出现在目标中（允许中间跳字）
+function isSubsequence(kw, target) {
+  let i = 0;
+  for (let j = 0; j < target.length && i < kw.length; j++) {
+    if (target[j] === kw[i]) i++;
+  }
+  return i === kw.length;
+}
+// 给单个来源打分：名称 > 别名 > 描述；先正则/子串匹配，不中再走模糊（顺序子序列）兑底
+function srcMatchScore(site, kw) {
+  let re;
+  try { re = new RegExp(kw, 'i'); } catch (e) { re = new RegExp(escapeRegExp(kw), 'i'); }
+  let score = 0;
+  if (re.test(site.name)) score += 100;
+  if ((site.aliases || []).some(a => re.test(a))) score += 60;
+  if ((site.description || '') && re.test(site.description)) score += 30;
+  if (score === 0 && kw.length >= 2) {
+    const k = kw.toLowerCase();
+    if (isSubsequence(k, site.name.toLowerCase()) || (site.aliases || []).some(a => isSubsequence(k, a.toLowerCase()))) score += 10;
+  }
+  return score;
+}
+function renderSrcModalList() {
+  const list = document.getElementById('srcModalList');
+  const kw = (document.getElementById('srcSearchInput').value || '').trim();
+  let filtered = sourcesData;
+  if (kw) {
+    filtered = sourcesData
+      .map(s => ({ s, score: srcMatchScore(s, kw) }))
+      .filter(x => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(x => x.s);
+  }
+  if (!filtered.length) { list.innerHTML = '<div style="grid-column:1/-1;padding:20px;font-size:13px;color:#999;text-align:center">' + (sourcesData.length ? '无匹配结果' : '暂无数据来源') + '</div>'; return; }
+  list.innerHTML = filtered.map(s =>
+    `<label class="src-item"><input type="checkbox" value="${s.id}" ${selectedSiteIds.has(s.id)?'checked':''}><span>${esc(s.name)}</span></label>`
+  ).join('');
+}
+function srcModalSelectAll() { document.querySelectorAll('#srcModalList input').forEach(cb => cb.checked = true); }
+function srcModalClearAll() { document.querySelectorAll('#srcModalList input').forEach(cb => cb.checked = false); }
+function confirmSourceModal() {
+  // 可见项按勾选状态更新，被搜索过滤掉的项保持原选中状态
+  document.querySelectorAll('#srcModalList input').forEach(cb => {
+    const id = parseInt(cb.value);
+    if (cb.checked) selectedSiteIds.add(id); else selectedSiteIds.delete(id);
+  });
+  updateFilterToggleState();
+  renderSourceSummary();
+  closeSourceModal();
 }
 
 // ============ 订阅词 ============

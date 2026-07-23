@@ -21,9 +21,35 @@ version: 5.0.0
 
 ## 项目架构（必须遵守）
 
+项目于 2026-07-22 完成模块化重构，按职责分层：
+
 ```
 ai_yuangong/
-├── scrapers/              # 爬虫文件（Node.js）← 你的爬虫放这里
+├── config/                # 配置层
+│   ├── settings.py        # 环境变量、路径常量（PROJECT_ROOT, SCRAPERS_DIR 等）
+│   └── constants.py       # 静态常量（批次大小、请求间隔等）
+├── core/                  # 核心基础设施
+│   ├── database.py        # 数据库连接池
+│   ├── schema.py          # 建表迁移
+│   └── utils.py           # 通用工具（字段映射、类型推断、noticeType 规范化）
+├── models/                # 数据模型
+│   └── schemas.py         # Pydantic 模型（GenerateRequest, ExtractedFields 等）
+├── services/              # 业务服务层（核心逻辑所在）
+│   ├── scraper_generator.py  # Hermes 爬虫生成逻辑（调用 hermes chat -q）
+│   ├── batch_task.py      # 批量任务模型与管理
+│   ├── llm_extractor.py   # LLM 字段提取核心逻辑（从 raw_data 到 extracted_data）
+│   ├── site_repo.py       # 站点表 CRUD
+│   ├── bid_repo.py        # 标书主表 CRUD
+│   └── ...                # region.py, subscription.py, province_index.py 等
+├── scripts/               # CLI 脚本（实际逻辑所在）
+│   ├── run_scrapers.py    # 爬虫批量运行入口
+│   ├── extract_fields.py  # LLM 字段提取 CLI 入口
+│   └── excel_parser.py    # Excel 解析器
+├── routers/               # FastAPI 薄路由（委托 services 处理业务）
+│   ├── scraper.py         # 爬虫生成路由（调用 services/scraper_generator.py）
+│   ├── admin.py           # 管理员路由（含批量爬取调度）
+│   └── data.py            # 数据查询路由
+├── scrapers/              # 爬虫文件（Node.js）← 你生成的爬虫放这里
 │   ├── utility/
 │   │   ├── stripHtml.js   # HTML → 纯文本工具
 │   │   └── JsonWriter.js  # 增量 JSON 写入器
@@ -34,18 +60,17 @@ ai_yuangong/
 │   ├── 采购公告/
 │   ├── 结果公告/
 │   └── 其他/
-├── extract_fields.py      # LLM 字段提取器
-├── run_scrapers.py        # CLI 运行入口（自动发现 scrapers/scrape_*.js）
-├── routers/
-│   ├── batch_scraper.py   # 批量爬取调度（依赖数据库 sites 表）
-│   └── scraper.py         # 爬虫自动生成（调用你的 Hermes）
-└── server.py              # FastAPI 主服务
+├── server.py              # FastAPI 主服务入口
+├── run_scrapers.py        # 兼容 shim → scripts/run_scrapers.py
+└── extract_fields.py      # 兼容 shim → scripts/extract_fields.py
 ```
 
 **数据流水线：**
 ```
-爬虫 (Node.js) → raw_data/<name>_data.json → LLM提取 (extract_fields.py) → extracted_data/{notice_type}/{date}.json
+爬虫 (Node.js) → raw_data/<name>_data.json → LLM提取 (services/llm_extractor.py) → extracted_data/{notice_type}/{date}.json
 ```
+
+**注意：** 根目录的 `run_scrapers.py` 和 `extract_fields.py` 现在只是兼容 shim，实际逻辑分别在 `scripts/run_scrapers.py` 和 `scripts/extract_fields.py`。你只需要关心 `scrapers/` 和 `raw_data/` 目录。
 
 ## 预设决策（不需要问用户）
 

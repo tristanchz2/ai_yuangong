@@ -64,15 +64,7 @@ async def add_site(site: SiteCreate, _=Depends(verify_admin_token)):
     if await site_repo.site_url_exists(site.url):
         raise HTTPException(status_code=400, detail=f"网站已存在: {site.url}")
 
-    new_id = await site_repo.create_site(site.name, site.url, scraper_name, site.description or "")
-
-    new_site = {
-        "id": new_id, "name": site.name, "url": site.url,
-        "scraper_name": scraper_name, "description": site.description or "",
-        "status": "active", "hidden": False
-    }
-
-    # 触发爬虫生成
+    # 触发爬虫生成（成功后才注册到数据库，避免定时任务爬到空站点）
     task_id = f"task_{int(time.time() * 1000)}"
     generate_tasks[task_id] = {
         'task_id': task_id,
@@ -84,20 +76,26 @@ async def add_site(site: SiteCreate, _=Depends(verify_admin_token)):
         'created_at': time.time(),
     }
 
-    async def generate_with_rollback():
+    async def generate_then_register():
         try:
             await run_hermes_generate(task_id, site.url, scraper_name, site.reference_urls)
             task = generate_tasks.get(task_id)
-            if task and task.get('status') != 'success':
-                await site_repo.delete_site(new_id)
+            if task and task.get('status') == 'success':
+                # 爬虫生成成功后才注册站点到数据库
+                new_id = await site_repo.create_site(site.name, site.url, scraper_name, site.description or "", site.aliases or [])
+                task['site_id'] = new_id
+            else:
                 await _cleanup_scraper_files(scraper_name)
         except Exception:
-            await site_repo.delete_site(new_id)
             await _cleanup_scraper_files(scraper_name)
 
-    asyncio.create_task(generate_with_rollback())
+    asyncio.create_task(generate_then_register())
 
-    return {**new_site, "task_id": task_id, "message": "网站已添加，爬虫正在生成"}
+    return {
+        "name": site.name, "url": site.url,
+        "scraper_name": scraper_name, "description": site.description or "",
+        "task_id": task_id, "message": "爬虫正在生成，成功后自动注册站点"
+    }
 
 
 @router.delete("/sites/{site_id}")
@@ -129,7 +127,7 @@ async def update_site(site_id: int, site: SiteUpdate, _=Depends(verify_admin_tok
     if not existing:
         raise HTTPException(status_code=404, detail=f"网站不存在: id={site_id}")
 
-    await site_repo.update_site(site_id, site.name, site.description or "")
+    await site_repo.update_site(site_id, site.name, site.description or "", site.aliases or [])
     return {"message": "网站已更新", "id": site_id}
 
 

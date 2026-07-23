@@ -28,16 +28,31 @@ version: 1.0.0
 
 ## 项目架构（必须遵守）
 
+项目已按职责分层重构，你只关心爬虫相关部分：
+
 ```
 ai_yuangong/
-├── scrapers/              # 爬虫文件（Node.js）
+├── scrapers/              # 爬虫文件（Node.js）← 你生成的爬虫放这里
 │   ├── utility/
 │   │   ├── stripHtml.js   # HTML → 纯文本工具
 │   │   └── JsonWriter.js  # 增量 JSON 写入器
 │   └── scrape_<name>.js   # 每个站点一个爬虫脚本
-├── raw_data/              # 爬虫原始输出 JSON
+├── raw_data/              # 爬虫原始输出 JSON ← 你的数据输出到这里
 │   └── <name>_data.json
-└── server.py              # FastAPI 主服务
+├── services/              # 业务服务层（你不需要改这里）
+│   ├── scraper_generator.py  # 调用 Hermes 生成爬虫
+│   └── llm_extractor.py   # LLM 字段提取
+├── routers/               # FastAPI 薄路由
+│   ├── scraper.py         # 爬虫生成路由
+│   └── admin.py           # 管理员路由（含批量爬取）
+├── scripts/               # CLI 脚本
+│   └── run_scrapers.py    # 爬虫批量运行入口
+└── server.py              # FastAPI 主服务入口
+```
+
+**数据流水线：**
+```
+爬虫 (Node.js) → raw_data/<name>_data.json → LLM提取 (services/llm_extractor.py) → extracted_data/{notice_type}/{date}.json
 ```
 
 ## 预设决策

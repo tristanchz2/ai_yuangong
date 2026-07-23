@@ -13,10 +13,6 @@ ai_yuangong/
 │   └── scrape_<name>.js   # 每个站点一个爬虫脚本
 ├── raw_data/              # 爬虫原始输出 JSON
 │   └── <name>_data.json
-├── extracted_data/        # LLM 提取后的结构化数据（按公告类型+日期分文件）
-│   ├── 采购公告/
-│   ├── 结果公告/
-│   └── 其他/
 ├── routers/               # FastAPI 后端路由
 │   ├── admin.py           # 管理员：站点管理、批量爬取
 │   ├── batch_scraper.py   # 批量爬取调度（爬虫5并发 + LLM 3并发）
@@ -25,12 +21,11 @@ ai_yuangong/
 ├── extract_fields.py      # LLM 字段提取器
 ├── run_scrapers.py        # CLI 运行入口（自动发现 scrapers/scrape_*.js）
 ├── server.py              # FastAPI 主服务
-└── sites.json             # 站点注册表（批量爬取依赖此文件）
 ```
 
 **数据流水线：**
 ```
-爬虫 (Node.js) → raw_data/<name>_data.json → LLM提取 (extract_fields.py) → extracted_data/{notice_type}/{date}.json
+爬虫 (Node.js) → raw_data/<name>_data.json → LLM提取 (extract_fields.py) → MySQL bids 表（前端唯一数据源）
 ```
 
 ---
@@ -171,33 +166,30 @@ node scrapers/scrape_<name>.js --latest 3
 node scrapers/scrape_<name>.js --yesterday
 ```
 
-### 第 3 步：注册到 sites.json
-在 `sites.json` 的 `sites` 数组中添加：
-```json
-{
-  "id": 12,
-  "name": "网站中文名",
-  "url": "https://example.com/",
-  "scraper_name": "<name>",
-  "description": "网站描述",
-  "status": "active",
-  "hidden": false
-}
+### 第 3 步：注册站点到数据库
+站点信息存储在 MySQL 的 `sites` 表（已不再使用 `sites.json` 文件）。
+
+**推荐方式**：通过管理后台添加站点，系统会自动触发爬虫生成，成功后自动注册到数据库。
+
+如果是**手动编写**的爬虫，可直接向 `sites` 表插入记录：
+```sql
+INSERT INTO sites (name, url, scraper_name, description, status, hidden)
+VALUES ('网站中文名', 'https://example.com/', '<name>', '网站描述', 'active', 0);
 ```
-- `id`：当前最大 id + 1
-- `scraper_name`：必须和爬虫文件名一致（`scrape_<scraper_name>.js`）
-- `hidden: false` 才会在批量爬取中被执行
+- `scraper_name`：必须和爬虫文件名一致（`scrape_<scraper_name>.js`），批量爬取靠它定位爬虫
+- `hidden = 0` 才会在批量爬取中被执行
+- `id` 为自增主键，无需手动指定
 
 ### 第 4 步：验证 LLM 提取流水线
 ```bash
 python3 extract_fields.py --source <name>
 ```
-检查 `extracted_data/` 下是否生成了对应文件。
+检查终端输出的“数据库写入完成”条数，或查询 MySQL `bids` 表确认数据已入库。
 
 ### 第 5 步：清理残留（如果是替换旧爬虫）
 - 删除旧的 `scrapers/scrape_<旧name>.js`
 - 删除 `raw_data/<旧name>_data.json`
-- `extracted_data/` 下旧源数据会被新数据覆盖
+- 重跑时旧数据会按 site_id + 日期自动清理并覆盖（见重爬覆盖机制）
 
 ---
 

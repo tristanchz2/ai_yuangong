@@ -18,6 +18,7 @@ async def ensure_tables():
                     url VARCHAR(500) NOT NULL UNIQUE,
                     scraper_name VARCHAR(100) DEFAULT NULL,
                     description VARCHAR(500) DEFAULT '',
+                    aliases JSON DEFAULT NULL,
                     status VARCHAR(20) DEFAULT 'active',
                     hidden BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -98,6 +99,15 @@ async def ensure_tables():
             if not await cur.fetchone():
                 await cur.execute(
                     "ALTER TABLE bids ADD COLUMN site_id INT DEFAULT NULL AFTER id, ADD INDEX idx_site_id (site_id)"
+                )
+
+    # 兼容旧库：若 sites 表缺少 aliases 列（搜索别名，JSON 数组），自动补加
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("SHOW COLUMNS FROM sites LIKE 'aliases'")
+            if not await cur.fetchone():
+                await cur.execute(
+                    "ALTER TABLE sites ADD COLUMN aliases JSON DEFAULT NULL AFTER description"
                 )
 
     # 兼容旧库：若 bids 表缺少 publish_date / bid_date 列，自动补加 + 索引

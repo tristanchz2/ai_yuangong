@@ -9,7 +9,7 @@
   python scripts/extract_fields.py --concurrency 3    # 设置并发数
   python scripts/extract_fields.py --batch-size 5     # 每次 LLM 调用处理的条数
 
-输出：extracted_data/ 目录下的 JSON 文件
+输出：写入 MySQL bids 表（前端唯一数据源）
 """
 
 import asyncio
@@ -27,16 +27,16 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 from dotenv import load_dotenv
 
-from config.settings import PROJECT_ROOT, RAW_DATA_DIR, OUTPUT_DIR
+from config.settings import PROJECT_ROOT, RAW_DATA_DIR
 from config.constants import DEFAULT_CONCURRENCY, BATCH_SIZE
 from core.database import init_db, close_db, get_yesterday_str
-from core.utils import file_lock, parse_date_str
+from core.utils import parse_date_str
 from services.region import parse_service_region
 from services.subscription import get_all_subscription_keywords, ensure_subscription_table, insert_bid_subscription
 from services.province_index import get_all_provinces, insert_bid_province
 from services.scrape_index import ensure_scrape_idx_table, insert_scrape_idx
 from services.bid_repo import (
-    insert_bid, get_scraper_to_site_id_map, delete_bids_by_source_date
+    insert_bid, get_scraper_to_site_id_map, get_site_id_to_name_map, delete_bids_by_source_date
 )
 from services.llm_extractor import (
     get_client, process_file, is_cancelled, set_cancel_file
@@ -130,9 +130,6 @@ async def async_main():
     print(f"🚀 共 {len(files)} 个文件, {total_items} 条记录待处理")
     print(f"⚡ 并发数: {args.concurrency}, 批次大小: {args.batch_size}")
 
-    # 创建输出目录
-    OUTPUT_DIR.mkdir(exist_ok=True)
-
     client = get_client()
     semaphore = asyncio.Semaphore(args.concurrency)
 
@@ -157,97 +154,44 @@ async def async_main():
 
     elapsed = time.time() - start_time
 
-    # 按 (notice_type, source, date) 分组，每个源独立目录，不做跨源合并
-    date_groups = {}
+    # ★ 统一 source 名称：建立 爬虫原始source文字 → sites表名称 的映射，并改写每条记录的 source 字段
+    #   让分组输出目录、extracted JSON、DB 写入的来源名全部以 sites 表（site_id）为准
+    source_to_scraper: dict = {}
+    for fp in files:
+        try:
+            with open(fp, "r", encoding="utf-8") as f:
+                d = json.load(f)
+            raw_source = d.get("source", "")
+            scraper = fp.stem[:-5] if fp.stem.endswith("_data") else fp.stem
+            if raw_source:
+                source_to_scraper[raw_source] = scraper
+        except Exception:
+            pass
+    scraper_to_site_id = await get_scraper_to_site_id_map()
+    site_id_to_name = await get_site_id_to_name_map()
+    site_name_to_id = {name: sid for sid, name in site_id_to_name.items()}
+    source_to_site_name: dict = {}
+    for raw_src, scraper in source_to_scraper.items():
+        sid = scraper_to_site_id.get(scraper)
+        if sid and sid in site_id_to_name:
+            source_to_site_name[raw_src] = site_id_to_name[sid]
     for r in all_results:
-        raw_pt = (r.get("raw_publish_time") or "")[:10]
-        if raw_pt and len(raw_pt) == 10 and raw_pt[0] == "2":
-            data_date = raw_pt
-        else:
-            data_date = (r.get("scrape_time") or "")[:10]
-        if not data_date or len(data_date) < 10:
-            data_date = "unknown"
-        nt = r.get("notice_type", "其他")
-        if nt not in ("采购公告", "结果公告", "其他"):
-            nt = "其他"
-        source = r.get("source", "未知源")
-        if data_date not in date_groups:
-            date_groups[data_date] = {}
-        if source not in date_groups[data_date]:
-            date_groups[data_date][source] = {"采购公告": [], "结果公告": [], "其他": []}
-        date_groups[data_date][source][nt].append(r)
-
-    # ── 写入前检查取消信号 ──
-    if is_cancelled():
-        print(f"\n🛑 检测到取消信号，跳过数据写入")
-        await close_db()
-        return
-
-    saved_count = 0
-    for date_str, source_groups in date_groups.items():
-        for source, type_groups in source_groups.items():
-            for notice_type, new_records in type_groups.items():
-                if not new_records:
-                    continue
-                if is_cancelled():
-                    print(f"\n🛑 检测到取消信号，停止写入（已保存 {saved_count} 条）")
-                    break
-                folder = OUTPUT_DIR / notice_type / source
-                folder.mkdir(parents=True, exist_ok=True)
-                output_path = folder / f"{date_str}.json"
-
-                lock_path = folder / f".{date_str}_{notice_type}.lock"
-                try:
-                    with file_lock(lock_path, timeout=30.0):
-                        clean_records = [
-                            {k: v for k, v in rec.items() if k != "subscription_matches"}
-                            for rec in new_records
-                        ]
-                        with open(output_path, "w", encoding="utf-8") as f:
-                            json.dump(
-                                {
-                                    "extractedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                                    "scrapeDate": date_str,
-                                    "noticeType": notice_type,
-                                    "source": source,
-                                    "totalRecords": len(clean_records),
-                                    "records": clean_records,
-                                },
-                                f,
-                                ensure_ascii=False,
-                                indent=2,
-                            )
-                        saved_count += len(new_records)
-                        print(f"  📁 {notice_type}/{source} ({date_str}): 保存 {len(new_records)} 条 -> {output_path}")
-                except TimeoutError as e:
-                    print(f"  ⚠️ {notice_type}/{source} ({date_str}): {e}，跳过写入")
-                except Exception as e:
-                    print(f"  ❌ {notice_type}/{source} ({date_str}): 写入失败 - {e}")
+        raw_src = r.get("source", "")
+        if raw_src in source_to_site_name:
+            r["source"] = source_to_site_name[raw_src]
 
     # ★ 写入数据库：将每条标书存入 bids 表 + 订阅词子表 + 爬取索引表
     db_saved = 0
     if all_results and not is_cancelled():
         print(f"\n💾 开始写入数据库...")
-        scraper_to_site_id = await get_scraper_to_site_id_map()
-        # 读取每个 raw_data 文件的 source 字段，建立 中文source → scraper_name 映射
-        source_to_scraper: dict = {}
-        for fp in files:
-            try:
-                with open(fp, "r", encoding="utf-8") as f:
-                    d = json.load(f)
-                raw_source = d.get("source", "")
-                scraper = fp.stem[:-5] if fp.stem.endswith("_data") else fp.stem
-                if raw_source:
-                    source_to_scraper[raw_source] = scraper
-            except Exception:
-                pass
         # 确保爬取索引表存在
         yesterday = get_yesterday_str()
         ensured_site_ids: set = set()
         for r in all_results:
             src_name = r.get("source", "")
-            scraper = source_to_scraper.get(src_name, "")
-            sid = scraper_to_site_id.get(scraper)
+            sid = site_name_to_id.get(src_name)
+            if sid is None:
+                sid = scraper_to_site_id.get(source_to_scraper.get(src_name, ""))
             if sid and sid not in ensured_site_ids:
                 await ensure_scrape_idx_table(sid, yesterday)
                 ensured_site_ids.add(sid)
@@ -273,8 +217,9 @@ async def async_main():
                 keywords_json = json.dumps(keywords_list, ensure_ascii=False) if keywords_list else None
                 service_province, service_city = parse_service_region(r.get("service_region"))
                 src_name = r.get("source", "")
-                scraper = source_to_scraper.get(src_name, "")
-                site_id = scraper_to_site_id.get(scraper)
+                site_id = site_name_to_id.get(src_name)
+                if site_id is None:
+                    site_id = scraper_to_site_id.get(source_to_scraper.get(src_name, ""))
                 bid_data = {
                     "site_id": site_id,
                     "source": r.get("source"),
@@ -312,8 +257,7 @@ async def async_main():
                 print(f"  ❌ DB 写入失败 (标题: {r.get('title', 'N/A')[:20]}): {e}")
         print(f"💾 数据库写入完成，共 {db_saved} 条")
 
-    print(f"\n✅ 提取完成！共 {saved_count} 条记录")
-    print(f"📂 输出目录: {OUTPUT_DIR}")
+    print(f"\n✅ 提取完成！数据库共写入 {db_saved} 条记录")
     print(f"⏱️  耗时: {elapsed:.1f}s")
 
     # 关闭数据库连接

@@ -81,16 +81,18 @@ class LoginResponse(BaseModel):
 
 
 class SiteCreate(BaseModel):
-    name: str
-    url: str
-    scraper_name: Optional[str] = None
-    description: Optional[str] = None
+    name: str = Field(min_length=1, max_length=15, description="网站名称，最多15个字")
+    url: str = Field(max_length=500)
+    scraper_name: Optional[str] = Field(default=None, max_length=50, pattern=r'^[a-zA-Z0-9_]+$', description="爬虫名称，仅允许英文、数字、下划线")
+    description: Optional[str] = Field(default=None, max_length=100)
+    aliases: Optional[List[str]] = Field(default=None, description="搜索别名列表，用于模糊搜索（如官方名/简称）")
     reference_urls: Optional[list[str]] = None
 
 
 class SiteUpdate(BaseModel):
-    name: str
-    description: Optional[str] = None
+    name: str = Field(min_length=1, max_length=15, description="网站名称，最多15个字")
+    description: Optional[str] = Field(default=None, max_length=100)
+    aliases: Optional[List[str]] = Field(default=None, description="搜索别名列表，用于模糊搜索（如官方名/简称）")
 
 
 class KeywordCreate(BaseModel):

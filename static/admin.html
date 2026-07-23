@@ -14,6 +14,8 @@
   .login-box h2 { text-align: center; margin-bottom: 24px; color: #1e3a5f; }
   .form-group { margin-bottom: 16px; }
   .form-group label { display: block; margin-bottom: 6px; font-size: 14px; color: #555; }
+  .char-count { font-size: 12px; color: #999; font-weight: 400; }
+  .char-count.over { color: #dc2626; }
   .form-group input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
   .form-group input:focus { outline: none; border-color: #1e3a5f; }
   .btn { padding: 10px 20px; border: none; border-radius: 8px; font-size: 14px; cursor: pointer; transition: all .2s; position: relative; }
@@ -38,6 +40,7 @@
   .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
   .toolbar h2 { font-size: 18px; color: #1e3a5f; }
   .toolbar-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .toolbar-actions .btn { height: 38px; }
   .site-table { width: 100%; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.06); table-layout: fixed; }
   .site-table th { background: #f8fafc; padding: 12px 14px; text-align: left; font-size: 13px; color: #666; border-bottom: 1px solid #eee; }
   .site-table td { padding: 12px 14px; font-size: 14px; border-bottom: 1px solid #f0f0f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -56,6 +59,20 @@
   .status-hidden { background: #fee2e2; color: #b91c1c; }
   .action-btns { display: flex; gap: 4px; flex-wrap: nowrap; justify-content: center; }
   .action-btns .btn { padding: 6px 10px; font-size: 12px; white-space: nowrap; }
+  /* 搜索框（内联在工具栏第一行，右侧内嵌模式下拉，与按钮等高对齐） */
+  .toolbar-search { display: flex; align-items: stretch; flex: 0 1 300px; min-width: 200px; margin-left: auto; height: 38px; background: #fff; border: 1px solid #ddd; border-radius: 8px; transition: border-color .15s; overflow: hidden; }
+  .toolbar-search:focus-within { border-color: #1e3a5f; }
+  .toolbar-search input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; padding: 0 12px; font-size: 14px; color: #333; }
+  .toolbar-search select { flex-shrink: 0; border: none; outline: none; background: #f1f5f9; border-left: 1px solid #ddd; padding: 0 6px; font-size: 13px; color: #555; cursor: pointer; }
+  /* 翻页组件（与标书看板同一套） */
+  .pagination { display: flex; justify-content: center; align-items: center; gap: 8px; margin-top: 24px; }
+  .pagination button { padding: 8px 16px; border: 1px solid #d1d5db; background: #fff; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all .15s; }
+  .pagination button:hover:not(:disabled) { background: #1e3a5f; color: #fff; border-color: #1e3a5f; }
+  .pagination button:disabled { opacity: .4; cursor: default; }
+  .pagination .page-input { width: 52px; padding: 7px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; text-align: center; outline: none; color: #333; -moz-appearance: textfield; appearance: textfield; }
+  .pagination .page-input::-webkit-outer-spin-button, .pagination .page-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .pagination .page-input:focus { border-color: #1e3a5f; }
+  .pagination .page-total { font-size: 14px; color: #555; }
   .add-form { background: #fff; padding: 24px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,.06); display: none; }
   .add-form.active { display: block; }
   .add-form h3 { margin-bottom: 16px; color: #1e3a5f; }
@@ -187,6 +204,13 @@
   <div id="adminPanel" class="panel">
     <div class="toolbar">
       <h2>网站管理</h2>
+      <div class="toolbar-search">
+        <input type="text" id="adminSiteSearch" placeholder="名称/别名/描述" oninput="onAdminSearch()">
+        <select id="adminSearchMode" onchange="onAdminSearch()" title="搜索模式">
+          <option value="text" selected>文字</option>
+          <option value="url">网址</option>
+        </select>
+      </div>
       <div class="toolbar-actions">
         <button class="btn btn-info" onclick="openTaskModal()">📋 历史任务</button>
         <button class="btn btn-info" onclick="openKeywordModal()">🏷️ 订阅词管理</button>
@@ -198,12 +222,17 @@
     <div class="add-form" id="addForm">
       <h3>添加新网站</h3>
       <div class="form-row">
-        <div class="form-group"><label>网站名称 *</label><input type="text" id="siteName" placeholder="如：中国农业银行"></div>
+        <div class="form-group"><label>网站名称 * <span class="char-count" id="siteNameCount">0/15</span></label><input type="text" id="siteName" maxlength="15" placeholder="如：中国农业银行" oninput="updateCharCount('siteName','siteNameCount')"></div>
         <div class="form-group"><label>网站地址 *</label><input type="text" id="siteUrl" placeholder="https://example.com"></div>
       </div>
       <div class="form-row">
         <div class="form-group"><label>爬虫名称（可选）</label><input type="text" id="siteScraper" placeholder="留空自动推导"></div>
         <div class="form-group"><label>描述（可选）</label><input type="text" id="siteDesc" placeholder="网站描述"></div>
+      </div>
+      <div class="form-group">
+        <label>搜索别名（可选，用于模糊搜索，如官方名/简称，可添加多个）</label>
+        <div id="aliasesContainer" style="margin-bottom: 8px;"></div>
+        <button type="button" class="btn btn-info" onclick="addAliasField()" style="padding: 6px 12px; font-size: 12px;">+ 添加别名</button>
       </div>
       <div class="form-group">
         <label>参考 URL（可选，用于学习页面结构）</label>
@@ -216,6 +245,14 @@
       </div>
     </div>
     <div id="siteList"><div class="empty-state">加载中...</div></div>
+    <div class="pagination" id="adminPagination" style="display:none">
+      <button id="adminFirstBtn" onclick="adminGoPage(1)">首页</button>
+      <button id="adminPrevBtn" onclick="adminGoPage(adminCurrentPage-1)">上一页</button>
+      <input type="number" class="page-input" id="adminPageInput" min="1" onkeydown="if(event.key==='Enter')adminDoJump()">
+      <span class="page-total">/ <span id="adminTotalPagesSpan"></span></span>
+      <button id="adminNextBtn" onclick="adminGoPage(adminCurrentPage+1)">下一页</button>
+      <button id="adminLastBtn" onclick="adminGoPage(adminTotalPages)">尾页</button>
+    </div>
   </div>
 </div>
 
@@ -263,12 +300,17 @@
     <div class="modal-body">
       <form id="editForm">
         <div class="form-group">
-          <label>网站名称 *</label>
-          <input type="text" id="editName" required>
+          <label>网站名称 * <span class="char-count" id="editNameCount">0/15</span></label>
+          <input type="text" id="editName" maxlength="15" required oninput="updateCharCount('editName','editNameCount')">
         </div>
         <div class="form-group">
           <label>网站描述</label>
           <input type="text" id="editDescription">
+        </div>
+        <div class="form-group">
+          <label>搜索别名（用于模糊搜索，可添加多个）</label>
+          <div id="aliasesContainerEdit" style="margin-bottom: 8px;"></div>
+          <button type="button" class="btn btn-info" onclick="addAliasField('aliasesContainerEdit')" style="padding: 6px 12px; font-size: 12px;">+ 添加别名</button>
         </div>
         <div class="form-group">
           <label>网站URL（不可修改）</label>
@@ -320,17 +362,76 @@ function doLogout() {
   document.getElementById('passwordInput').value = '';
 }
 
+// ============ 站点列表：搜索 + 分页（14个/页，复用标书看板翻页组件） ============
+const ADMIN_PER_PAGE = 14;
+let allSites = [];
+let adminCurrentPage = 1;
+let adminTotalPages = 1;
+
 async function loadSites() {
   try {
     const resp = await fetch('/api/admin/sites', { headers: { 'X-Admin-Token': adminToken } });
     if (resp.status === 401) { doLogout(); return; }
-    const sites = await resp.json();
-    renderSites(sites);
+    allSites = (await resp.json()) || [];
+    renderAdminSites();
   } catch (e) { document.getElementById('siteList').innerHTML = '<div class="empty-state" style="color:#dc2626">加载失败</div>'; }
 }
 
-function renderSites(sites) {
-  if (!sites || sites.length === 0) { document.getElementById('siteList').innerHTML = '<div class="empty-state">暂无网站数据</div>'; return; }
+function adminEscapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+function adminIsSubsequence(kw, target) { let i = 0; for (let j = 0; j < target.length && i < kw.length; j++) { if (target[j] === kw[i]) i++; } return i === kw.length; }
+function adminSiteMatchScore(site, kw) {
+  let re;
+  try { re = new RegExp(kw, 'i'); } catch (e) { re = new RegExp(adminEscapeRegExp(kw), 'i'); }
+  let score = 0;
+  if (re.test(site.name || '')) score += 100;
+  if ((site.aliases || []).some(a => re.test(a))) score += 60;
+  if ((site.description || '') && re.test(site.description)) score += 30;
+  if (score === 0 && kw.length >= 2) {
+    const k = kw.toLowerCase();
+    if (adminIsSubsequence(k, (site.name || '').toLowerCase()) || (site.aliases || []).some(a => adminIsSubsequence(k, a.toLowerCase()))) score += 10;
+  }
+  return score;
+}
+// ---- URL 搜索引擎：忽略协议/端口/路径，对域名做正则 + 模糊匹配 ----
+function normalizeHost(u) {
+  if (!u) return '';
+  let s = String(u).trim().toLowerCase();
+  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//, '');  // 去掉 http:// https:// 等协议
+  s = s.replace(/[/?#].*$/, '');                   // 去掉路径 / 查询参数 / 锚点
+  s = s.replace(/:\d+$/, '');                       // 去掉端口号
+  s = s.replace(/^www\./, '');                      // 去掉 www. 前缀
+  return s;
+}
+function adminUrlMatchScore(site, kw) {
+  const host = normalizeHost(site.url);
+  const k = normalizeHost(kw);
+  if (!host || !k) return 0;
+  let re;
+  try { re = new RegExp(k, 'i'); } catch (e) { re = new RegExp(adminEscapeRegExp(k), 'i'); }
+  if (re.test(host)) return 100;
+  if (k.length >= 2 && adminIsSubsequence(k, host)) return 10;
+  return 0;
+}
+
+function getFilteredSites() {
+  const kw = (document.getElementById('adminSiteSearch').value || '').trim();
+  if (!kw) return allSites;
+  const mode = document.getElementById('adminSearchMode').value;
+  const scorer = mode === 'url' ? adminUrlMatchScore : adminSiteMatchScore;
+  return allSites
+    .map(s => ({ s, score: scorer(s, kw) }))
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map(x => x.s);
+}
+function onAdminSearch() {
+  const mode = document.getElementById('adminSearchMode').value;
+  document.getElementById('adminSiteSearch').placeholder = mode === 'url' ? '搜索网址' : '名称/别名/描述';
+  adminCurrentPage = 1;
+  renderAdminSites();
+}
+
+function buildSiteTable(sites) {
   let html = '<table class="site-table"><thead><tr><th>ID</th><th>名称</th><th>网址</th><th>爬虫</th><th>状态</th><th>操作</th></tr></thead><tbody>';
   for (const s of sites) {
     const isHidden = s.hidden;
@@ -349,7 +450,39 @@ function renderSites(sites) {
   </tr>`;
   }
   html += '</tbody></table>';
-  document.getElementById('siteList').innerHTML = html;
+  return html;
+}
+
+function renderAdminSites() {
+  const filtered = getFilteredSites();
+  const total = filtered.length;
+  adminTotalPages = Math.max(1, Math.ceil(total / ADMIN_PER_PAGE));
+  adminCurrentPage = Math.min(Math.max(1, adminCurrentPage), adminTotalPages);
+  const start = (adminCurrentPage - 1) * ADMIN_PER_PAGE;
+  const pageSites = filtered.slice(start, start + ADMIN_PER_PAGE);
+  document.getElementById('siteList').innerHTML = total === 0
+    ? '<div class="empty-state">' + (allSites.length ? '无匹配结果' : '暂无网站数据') + '</div>'
+    : buildSiteTable(pageSites);
+  updateAdminPagination();
+}
+
+function updateAdminPagination() {
+  document.getElementById('adminPagination').style.display = adminTotalPages > 1 ? 'flex' : 'none';
+  document.getElementById('adminPageInput').value = adminCurrentPage;
+  document.getElementById('adminPageInput').max = adminTotalPages;
+  document.getElementById('adminTotalPagesSpan').textContent = adminTotalPages;
+  document.getElementById('adminPrevBtn').disabled = adminCurrentPage <= 1;
+  document.getElementById('adminNextBtn').disabled = adminCurrentPage >= adminTotalPages;
+  document.getElementById('adminFirstBtn').disabled = adminCurrentPage <= 1;
+  document.getElementById('adminLastBtn').disabled = adminCurrentPage >= adminTotalPages;
+}
+
+function adminGoPage(p) { if (p < 1 || p > adminTotalPages) return; adminCurrentPage = p; renderAdminSites(); }
+function adminDoJump() {
+  const input = document.getElementById('adminPageInput');
+  const p = parseInt(input.value);
+  if (p >= 1 && p <= adminTotalPages && p !== adminCurrentPage) adminGoPage(p);
+  else { input.style.borderColor = '#dc2626'; setTimeout(() => input.style.borderColor = '#d1d5db', 1000); input.value = adminCurrentPage; }
 }
 
 function toggleAddForm() { 
@@ -360,6 +493,10 @@ function toggleAddForm() {
     const container = document.getElementById('refUrlsContainer');
     container.innerHTML = '';
     addRefUrlField();
+    // 初始化一个空的别名输入框
+    const aliasContainer = document.getElementById('aliasesContainer');
+    aliasContainer.innerHTML = '';
+    addAliasField();
   }
 }
 
@@ -387,6 +524,47 @@ function removeRefUrlField(button) {
   }
 }
 
+function addAliasField(containerId = 'aliasesContainer', value = '') {
+  const container = document.getElementById(containerId);
+  const div = document.createElement('div');
+  div.style.display = 'flex';
+  div.style.gap = '8px';
+  div.style.marginBottom = '8px';
+  div.innerHTML = `
+    <input type="text" class="alias-input" placeholder="如：中国农业银行" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+    <button type="button" class="btn btn-danger" onclick="removeAliasField(this)" style="padding: 6px 12px; font-size: 12px;">✕</button>
+  `;
+  container.appendChild(div);
+  div.querySelector('.alias-input').value = value;  // 通过属性赋值，避免特殊字符注入
+}
+
+function removeAliasField(button) { button.parentElement.remove(); }
+
+function collectAliases(containerId) {
+  return Array.from(document.querySelectorAll('#' + containerId + ' .alias-input'))
+    .map(i => i.value.trim())
+    .filter(v => v.length > 0);
+}
+
+function updateCharCount(inputId, countId) {
+  const len = document.getElementById(inputId).value.length;
+  const el = document.getElementById(countId);
+  el.textContent = len + '/15';
+  el.classList.toggle('over', len >= 15);
+}
+function formatApiError(detail, fallback) {
+  if (!detail) return fallback;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) {
+    // Pydantic 校验错误数组，提取可读信息
+    return detail.map(e => {
+      const field = (e.loc || []).slice(1).join('.');
+      return (field ? '【' + field + '】' : '') + (e.msg || JSON.stringify(e));
+    }).join('\n');
+  }
+  return fallback;
+}
+
 async function addSite() {
   const name = document.getElementById('siteName').value.trim();
   const url = document.getElementById('siteUrl').value.trim();
@@ -394,12 +572,17 @@ async function addSite() {
   const desc = document.getElementById('siteDesc').value.trim();
   
   if (!name || !url) { alert('请填写网站名称和地址'); return; }
+  if (name.length > 15) { alert('网站名称最多15个字'); return; }
+  if (scraper && !/^[a-zA-Z0-9_]+$/.test(scraper)) { alert('爬虫名称仅允许英文、数字、下划线'); return; }
   
   // 收集所有非空的参考URL输入框的值
   const refUrlInputs = document.querySelectorAll('.ref-url-input');
   const reference_urls = Array.from(refUrlInputs)
     .map(input => input.value.trim())
     .filter(url => url.length > 0);
+  
+  // 收集所有非空的别名输入框的值
+  const aliases = collectAliases('aliasesContainer');
   
   try {
     const resp = await fetch('/api/admin/sites', { 
@@ -410,10 +593,11 @@ async function addSite() {
         url, 
         scraper_name: scraper || null, 
         description: desc || null,
+        aliases: aliases.length > 0 ? aliases : null,
         reference_urls: reference_urls.length > 0 ? reference_urls : null
       }) 
     });
-    if (!resp.ok) { const err = await resp.json(); alert(err.detail || '添加失败'); return; }
+    if (!resp.ok) { const err = await resp.json(); alert(formatApiError(err.detail, '添加失败')); return; }
     const result = await resp.json();
     alert(result.message || '网站已添加，爬虫正在生成');
     toggleAddForm();
@@ -872,6 +1056,17 @@ async function openEditModal(siteId) {
     document.getElementById('editDescription').value = site.description || '';
     document.getElementById('editUrl').value = site.url || '';
     document.getElementById('editScraperName').value = site.scraper_name || '';
+    updateCharCount('editName', 'editNameCount');
+    
+    // 填充别名输入框
+    const aliasContainer = document.getElementById('aliasesContainerEdit');
+    aliasContainer.innerHTML = '';
+    const siteAliases = site.aliases || [];
+    if (siteAliases.length > 0) {
+      siteAliases.forEach(a => addAliasField('aliasesContainerEdit', a));
+    } else {
+      addAliasField('aliasesContainerEdit');
+    }
     
     // 存储网站ID
     document.getElementById('editForm').dataset.siteId = siteId;
@@ -893,11 +1088,13 @@ async function saveSite() {
   const siteId = document.getElementById('editForm').dataset.siteId;
   const name = document.getElementById('editName').value.trim();
   const description = document.getElementById('editDescription').value.trim();
+  const aliases = collectAliases('aliasesContainerEdit');
   
   if (!name) {
     alert('网站名称不能为空');
     return;
   }
+  if (name.length > 15) { alert('网站名称最多15个字'); return; }
   
   try {
     const resp = await fetch(`/api/admin/sites/${siteId}`, {
@@ -908,13 +1105,14 @@ async function saveSite() {
       },
       body: JSON.stringify({
         name: name,
-        description: description
+        description: description,
+        aliases: aliases
       })
     });
     
     if (!resp.ok) {
       const err = await resp.json();
-      alert(err.detail || '更新失败');
+      alert(formatApiError(err.detail, '更新失败'));
       return;
     }
     

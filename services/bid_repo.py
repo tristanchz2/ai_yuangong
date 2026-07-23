@@ -64,6 +64,16 @@ async def get_scraper_to_site_id_map() -> dict:
     return {r[0]: r[1] for r in rows}
 
 
+async def get_site_id_to_name_map() -> dict:
+    """返回 {site_id: site_name} 映射（用于统一 source 名称为 sites 表当前名）"""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("SELECT id, name FROM sites")
+            rows = await cur.fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
 async def delete_bids_by_source_date(site_id: int, data_date: str) -> int:
     """
     通过爬取索引表级联删除指定站点 + 日期的标书数据。
