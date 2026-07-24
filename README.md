@@ -47,12 +47,43 @@
    - Linux: `sudo apt install docker.io`
 
 2. **准备 MySQL 数据库**
-   仅支持MySQL 5.7.8+，推荐MySQL 8.0+
+   仅支持 MySQL 5.7.8+，推荐 MySQL 8.0+
 
-3. **迁移Hermes skill**
-   在项目根目录执行
-   ```bash
+3. **配置 Hermes skill**（如需爬虫自动生成功能）
    
+   项目包含两个 skill 管理脚本，用途不同：
+   
+   **`setup_hermes.sh`** - 本地 skill 安装
+   - 功能：将项目的 `.hermes/skills/` 复制到 `~/.hermes/skills/`
+   - 使用场景：本机部署前，让 Hermes 能识别自定义 skills（爬虫生成等）
+   - 命令：`bash setup_hermes.sh`
+   
+   **`sync_hermes_to_server.sh`** - 远程环境同步
+   - 功能：将本地完整的 Hermes 环境（skills、sessions、memory、config）同步到远程服务器
+   - 使用场景：将本地开发环境迁移到服务器
+   - 命令：`bash sync_hermes_to_server.sh user@server`
+   
+   **典型流程：**
+   ```bash
+   # 1. 本地开发时同步到服务器
+   bash sync_hermes_to_server.sh
+   
+   # 2. SSH 到服务器后安装 skills
+   ssh user@server
+   cd /path/to/ai_yuangong
+   bash setup_hermes.sh
+   ```
+
+4. **平台支持**
+   - ✅ macOS：完全支持
+   - ✅ Linux：完全支持
+   - ❌ Windows：不原生支持（WSL2 环境下可能可用，但未测试）
+
+5. **虚拟显示器（Xvfb）**
+   - Docker 镜像已内置 Xvfb，容器启动时自动启用
+   - 源码部署时需手动安装：`sudo apt install xvfb`
+   - 启动命令使用 `xvfb-run --auto-servernum python server.py`
+   - 作用：让 Chrome 浏览器在无 GUI 环境下以有头模式运行，保持反爬虫能力
 
 #### 快速启动
 

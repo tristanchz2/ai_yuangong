@@ -6,11 +6,11 @@ ENV PYTHONUNBUFFERED=1 \
     NODE_ENV=production \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# 安装系统依赖
+# 安装运行时系统依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    git \
-    build-essential \
+    # Xvfb 虚拟显示器（Chrome 有头模式在无 GUI 环境需要）
+    xvfb \
     # Playwright 运行时依赖
     libnss3 \
     libnspr4 \
@@ -59,5 +59,5 @@ COPY . .
 # 暴露端口
 EXPOSE 8000
 
-# 启动命令
-CMD ["python", "server.py"]
+# 启动命令：用 xvfb-run 包裹，让 Chrome 有头模式在无 GUI 环境也能运行
+CMD ["xvfb-run", "--auto-servernum", "python", "server.py"]
