@@ -58,7 +58,7 @@ Province = Literal[PROVINCE_LIST]  # type: ignore
 # ──────────────────────────────────────────────
 DEFAULT_CONCURRENCY = 3  # 默认并发数（文件级别），可通过 --concurrency 参数调整
 REQUEST_INTERVAL = 1.0  # 每次请求之间的最小间隔（秒）
-BATCH_SIZE = 10  # 每次 LLM 调用处理的公告条数
+BATCH_SIZE = 5  # 每次 LLM 调用处理的公告条数
 
 # 数据分类
 DATA_CATEGORIES = ["采购公告", "结果公告", "其他"]

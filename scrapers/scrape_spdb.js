@@ -1,19 +1,182 @@
 /**
- * 浦发银行采购供应商门户 (spdb)
- * 使用 Playwright 提取 SPA 动态数据
+ * 浦发银行采购供应商门户 v2 (spdb_v2)
+ * HTTP/HTTPS 直接请求方案 — 不依赖 Playwright
+ * 解密链：AES-ECB (响应 data) + 自定义 Base64 (content 字段)
  *
  * Usage:
- *   node scrape_spdb.js --info
- *   node scrape_spdb.js --latest 5
- *   node scrape_spdb.js --yesterday
- *   node scrape_spdb.js --date YYYY-MM-DD
+ *   node scrape_spdb_v2.js --info             # 输出元数据 JSON
+ *   node scrape_spdb_v2.js --latest 5         # 爬取最新 N 条
+ *   node scrape_spdb_v2.js --yesterday        # 爬取昨天数据
+ *   node scrape_spdb_v2.js --date YYYY-MM-DD  # 爬取指定日期
  */
 
-const { chromium } = require('playwright');
+const https = require('https');
+const crypto = require('crypto');
+const fs = require('fs');
 const path = require('path');
+const { stripHtml } = require('./utility/stripHtml');
 const { JsonWriter } = require('./utility/JsonWriter');
 
-const OUTPUT_JSON = path.join(__dirname, '..', 'raw_data', 'spdb_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', 'raw_data', 'spdb_v2_data.json');
+
+const BASE_URL = 'https://ebuy.spdb.com.cn';
+const APP_URL = `${BASE_URL}/app`;
+
+// 公告类型映射
+const NOTICE_TYPE_MAP = {
+  '00100001': '招标公告',
+  '0011004': '结果公告',
+  '0011008': '招标公告',
+  '00100010': '招标公告',
+  '00100007': '变更公告',
+  '00100011': '变更公告',
+};
+
+// ===================== 自定义 Base64 解码 =====================
+const CUSTOM_ALPHABET = 'RSTUVWXYZaDEFGHIJKLMNOPQklmnopqrstuvwxyzbc45678defghijABC01239+/=';
+
+function utf8Decode(str) {
+  let result = '';
+  let i = 0;
+  while (i < str.length) {
+    const c = str.charCodeAt(i);
+    if (c < 128) { result += String.fromCharCode(c); i++; }
+    else if (c > 191 && c < 224) {
+      const c2 = str.charCodeAt(i + 1);
+      result += String.fromCharCode((c & 31) << 6 | c2 & 63);
+      i += 2;
+    } else {
+      const c2 = str.charCodeAt(i + 1);
+      const c3 = str.charCodeAt(i + 2);
+      result += String.fromCharCode((c & 15) << 12 | (c2 & 63) << 6 | c3 & 63);
+      i += 3;
+    }
+  }
+  return result;
+}
+
+function customBase64Decode(str) {
+  str = str.replace(/[^A-Za-z0-9+/=]/g, '');
+  let result = '';
+  let d = 0;
+  while (d < str.length) {
+    const f = CUSTOM_ALPHABET.indexOf(str.charAt(d++));
+    const C = CUSTOM_ALPHABET.indexOf(str.charAt(d++));
+    const t = CUSTOM_ALPHABET.indexOf(str.charAt(d++));
+    const n = CUSTOM_ALPHABET.indexOf(str.charAt(d++));
+    const o = f << 2 | C >> 4;
+    const c = (C & 15) << 4 | t >> 2;
+    const h = (t & 3) << 6 | n;
+    result += String.fromCharCode(o);
+    if (t != 64) result += String.fromCharCode(c);
+    if (n != 64) result += String.fromCharCode(h);
+  }
+  return utf8Decode(result);
+}
+
+function decodeHtml(str) {
+  let r = str;
+  r = r.replace(/%3E/g, '>').replace(/%3C/g, '<');
+  return customBase64Decode(r);
+}
+
+// ===================== HTTP 请求 =====================
+function httpRequest(url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const isHttps = parsed.protocol === 'https:';
+    const lib = isHttps ? https : require('http');
+    const reqOptions = {
+      hostname: parsed.hostname,
+      port: parsed.port || (isHttps ? 443 : 80),
+      path: parsed.pathname + parsed.search,
+      method: options.method || 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Connection': 'keep-alive',
+        'Authorization': 'null',
+        ...options.headers,
+      },
+      timeout: 30000,
+      // 允许遗留 SSL 重协商（浦发服务器需要）
+      secureOptions: crypto.constants.SSL_OP_LEGACY_SERVER_CONNECT,
+    };
+
+    if (options.body) {
+      reqOptions.headers['Content-Type'] = options.headers?.['Content-Type'] || 'application/x-www-form-urlencoded;charset:utf-8';
+      reqOptions.headers['Content-Length'] = Buffer.byteLength(options.body);
+    }
+
+    const req = lib.request(reqOptions, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            const jsonData = JSON.parse(data);
+            // 提取响应头中的 Content-Visa
+            const contentVisa = res.headers['content-visa'] || '';
+            resolve({ data: jsonData, contentVisa });
+          } catch (e) {
+            reject(new Error(`JSON parse error: ${e.message}, raw: ${data.substring(0, 200)}`));
+          }
+        } else {
+          reject(new Error(`HTTP ${res.statusCode}: ${data.substring(0, 300)}`));
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Request timeout')); });
+
+    if (options.body) req.write(options.body);
+    req.end();
+  });
+}
+
+// ===================== AES-ECB 解密 =====================
+function decryptResponse(encryptedData, contentVisa) {
+  if (!encryptedData || !contentVisa) return encryptedData;
+  
+  const keyStr = contentVisa + '39457352';
+  const key = Buffer.from(keyStr.substring(0, 16), 'utf8');
+  
+  try {
+    const decipher = crypto.createDecipheriv('aes-128-ecb', key, null);
+    decipher.setAutoPadding(true);
+    let decrypted = decipher.update(encryptedData, 'base64', 'utf8');
+    decrypted += decipher.final('utf8');
+    return JSON.parse(decrypted);
+  } catch (e) {
+    console.log(`    ⚠ AES 解密失败: ${e.message}`);
+    return null;
+  }
+}
+
+// ===================== 限频退避 =====================
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function requestWithBackoff(fn, label) {
+  let delay = 4000;
+  const MAX_ATTEMPTS = 5;
+  const MAX_DELAY = 60000;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (attempt < MAX_ATTEMPTS) {
+        console.log(`    ⚠ ${label} (${attempt}/${MAX_ATTEMPTS}): ${e.message}，等待 ${delay / 1000}s...`);
+        await sleep(delay);
+        delay = Math.min(delay * 2, MAX_DELAY);
+      } else {
+        console.log(`    ✗ ${label}: 失败 - ${e.message}`);
+        throw e;
+      }
+    }
+  }
+}
 
 // ===================== 日期工具 =====================
 function formatDate(d) {
@@ -29,113 +192,64 @@ function formatScrapeTime() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}`;
 }
 
-let browser = null;
-async function initBrowser() {
-  if (!browser) browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
-  return browser;
-}
-async function closeBrowser() { if (browser) { await browser.close(); browser = null; } }
+// ===================== API 调用 =====================
 
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+// 获取公告列表
+async function fetchNoticeList(page, rows, params = {}) {
+  const body = new URLSearchParams({
+    page: String(page),
+    rows: String(rows),
+    noticeStatus: '9',
+    validFlag: '1',
+    orderRule: '1',
+    from: 'notice',
+    ...Object.fromEntries(Object.entries(params).map(([k, v]) => [k, String(v)])),
+  });
 
-async function withRetry(fn, label, maxAttempts = 5) {
-  for (let a = 1; a <= maxAttempts; a++) {
-    try { return await fn(); }
-    catch (e) {
-      if (a < maxAttempts) {
-        const delay = a * 3000;
-        console.log(`    ⚠ ${label} (${a}/${maxAttempts}): ${e.message}，等待 ${delay/1000}s...`);
-        await sleep(delay);
-      } else { console.log(`    ✗ ${label}: ${e.message}`); throw e; }
-    }
-  }
-}
-
-// ===================== 列表提取 =====================
-async function extractListItems(page) {
-  return await withRetry(async () => {
-    await page.waitForSelector('.list-item', { timeout: 30000 });
-    return await page.evaluate(() => {
-      const results = [];
-      document.querySelectorAll('.list-item').forEach(item => {
-        const typeEls = item.querySelectorAll('.type');
-        const titleEl = item.querySelector('.title');
-        const dateEl = item.querySelector('.date');
-        const title = titleEl?.textContent?.trim() || '';
-        if (title) {
-          results.push({
-            title,
-            publishTime: dateEl?.textContent?.trim() || '',
-            noticeType: typeEls[0]?.textContent?.trim() || '',
-            orgType: typeEls[1]?.textContent?.trim() || ''
-          });
-        }
+  return requestWithBackoff(
+    async () => {
+      const result = await httpRequest(`${APP_URL}/noticeManagement/findPurchaseNotice`, {
+        method: 'POST',
+        body: body.toString(),
+        headers: { 'Referer': `${BASE_URL}/#/notice` },
       });
-      return results;
-    });
-  }, '列表提取');
+      
+      if (result.data.code !== 'AAAAAAA') {
+        throw new Error(`API 返回异常: ${result.data.message}`);
+      }
+      
+      // 解密 data 字段
+      const decryptedData = decryptResponse(result.data.data, result.contentVisa);
+      if (!decryptedData) {
+        throw new Error('解密失败');
+      }
+      
+      return decryptedData;
+    },
+    `获取列表 第${page}页`
+  );
 }
 
-// ===================== 点击+详情提取 =====================
-async function clickAndExtract(page, index) {
-  return await withRetry(async () => {
-    const items = await page.$$('.list-item');
-    if (index >= items.length) throw new Error(`索引越界 ${index}/${items.length}`);
-
-    await items[index].click();
-    await page.waitForURL(/noticeDetail/, { timeout: 15000 });
-    await sleep(2000);
-    await page.waitForSelector('.manual-content', { timeout: 15000 });
-
-    const detail = await page.evaluate(() => {
-      const titleEl = document.querySelector('.manual-title');
-      const title = titleEl?.textContent?.trim() || '';
-
-      const timeEl = document.querySelector('.time-style');
-      let publishTime = '';
-      if (timeEl) {
-        const m = timeEl.textContent.match(/(\d{4}-\d{2}-\d{2})/);
-        if (m) publishTime = m[1];
-      }
-
-      const contentEl = document.querySelector('.manual-content');
-      let content = contentEl?.innerText || '';
-
-      if (content.length < 200) {
-        const p = Array.from(document.querySelectorAll('p.MsoNormal'))
-          .map(p => p.innerText?.trim()).filter(t => t.length > 10);
-        content = p.join('\n\n');
-      }
-      if (content.length < 200) {
-        const p = Array.from(document.querySelectorAll('p'))
-          .map(p => p.innerText?.trim()).filter(t => t.length > 20);
-        content = p.join('\n\n');
-      }
-      return { title, content, publishTime };
-    });
-
-    let noticeType = '';
-    if (detail.title.includes('结果公告') || detail.title.includes('中标') || detail.title.includes('结果公示'))
-      noticeType = '结果公告';
-    else if (detail.title.includes('采购公告') || detail.title.includes('招标'))
-      noticeType = '采购公告';
-    else if (detail.title.includes('变更') || detail.title.includes('更正'))
-      noticeType = '变更公告';
-    else if (detail.title.includes('流标'))
-      noticeType = '流标公告';
-
-    return { ...detail, url: page.url(), noticeType };
-  }, '详情提取');
-}
-
-// ===================== 翻页 =====================
-async function goToNextPage(page) {
-  const btn = await page.$('.arco-pagination-item-next:not([aria-disabled="true"])');
-  if (!btn) return false;
-  await btn.click();
-  await sleep(2500);
-  await page.waitForSelector('.list-item', { timeout: 10000 }).catch(() => {});
-  return true;
+// ===================== 详情解析 =====================
+function extractContent(content) {
+  if (!content || typeof content !== 'string') return '';
+  
+  // 尝试自定义 Base64 解码
+  try {
+    const decoded = decodeHtml(content);
+    if (decoded && decoded.length > 50) {
+      return stripHtml(decoded);
+    }
+  } catch (e) {
+    // 解码失败，尝试直接 stripHtml
+  }
+  
+  // 如果已经是纯文本
+  if (content.length > 200 && !content.match(/^[A-Za-z0-9+/=]+$/)) {
+    return stripHtml(content);
+  }
+  
+  return '';
 }
 
 // ===================== 主流程 =====================
@@ -144,107 +258,149 @@ async function main() {
 
   if (args.includes('--info')) {
     console.log(JSON.stringify({
-      name: 'spdb',
-      description: '浦发银行采购供应商门户 (Playwright)',
+      name: 'spdb_v2',
+      description: '浦发银行采购供应商门户 (HTTP直连版)',
       modes: ['latest', 'yesterday', 'date'],
-      outputFile: 'raw_data/spdb_data.json',
+      outputFile: 'raw_data/spdb_v2_data.json',
     }));
     return;
   }
 
+  // 参数解析
   let mode = 'latest', count = 5, targetDate = null;
-  const yi = args.indexOf('--yesterday'), li = args.indexOf('--latest'), di = args.indexOf('--date');
-  if (yi >= 0) { mode = 'date'; targetDate = getYesterday(); }
-  else if (di >= 0) { mode = 'date'; targetDate = args[di + 1]; }
-  else if (li >= 0) { count = parseInt(args[li + 1]) || 5; }
+  const yesterdayIdx = args.indexOf('--yesterday');
+  const latestIdx = args.indexOf('--latest');
+  const dateIdx = args.indexOf('--date');
+  if (yesterdayIdx >= 0) { mode = 'date'; targetDate = getYesterday(); }
+  else if (dateIdx >= 0) { mode = 'date'; targetDate = args[dateIdx + 1]; }
+  else if (latestIdx >= 0) { count = parseInt(args[latestIdx + 1]) || 5; }
 
-  const writer = new JsonWriter(OUTPUT_JSON, { source: '浦发银行采购供应商门户', scrapeTime: formatScrapeTime() });
+  console.log(`[spdb_v2] 模式: ${mode}${mode === 'date' ? ` 目标日期: ${targetDate}` : ` 数量: ${count}`}`);
+
+  const scrapeTime = formatScrapeTime();
+  const writer = new JsonWriter(OUTPUT_JSON, { source: 'spdb_v2', scrapeTime });
+  const matchedRows = [];
+  let totalCollected = 0;
+  let page = 1;
+  const pageSize = 10;
+  const MAX_PAGES = mode === 'date' ? 15 : Math.ceil(count / pageSize) + 2;
 
   try {
-    await initBrowser();
-    const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      viewport: { width: 1920, height: 1080 }
-    });
-    const page = await context.newPage();
+    while (page <= MAX_PAGES) {
+      console.log(`\n[spdb_v2] 获取列表 第${page}页...`);
 
-    console.log(`🚀 开始爬取浦发银行采购供应商门户 (${mode}模式)...`);
-
-    await page.goto('https://ebuy.spdb.com.cn/#/notice', { waitUntil: 'networkidle', timeout: 30000 });
-    await sleep(3000);
-
-    let allItems = [];
-    let currentPage = 1;
-    const MAX_PAGES = 20;
-
-    while (currentPage <= MAX_PAGES) {
-      const pageItems = await extractListItems(page);
-      if (pageItems.length === 0) { console.log(`  第 ${currentPage} 页: 无数据`); break; }
-
-      allItems = allItems.concat(pageItems.map((item, idx) => ({ ...item, pageIndex: currentPage, itemIndex: idx })));
-      console.log(`  第 ${currentPage} 页: ${pageItems.length} 条`);
-
+      const params = {};
       if (mode === 'date' && targetDate) {
-        const last = pageItems[pageItems.length - 1].publishTime;
-        if (last && last < targetDate) { console.log(`  ✓ 最早 ${last} < ${targetDate}，停止翻页`); break; }
+        params.startDate = targetDate;
+        params.endDate = targetDate;
       }
-      if (mode === 'latest' && allItems.length >= count) break;
 
-      if (!(await goToNextPage(page))) break;
-      currentPage++;
-    }
+      const result = await fetchNoticeList(page, pageSize, params);
 
-    if (mode === 'date' && targetDate) {
-      allItems = allItems.filter(item => item.publishTime === targetDate);
-      console.log(`📅 日期过滤后: ${allItems.length} 条 (${targetDate})`);
-    }
-    if (mode === 'latest') allItems = allItems.slice(0, count);
+      if (!result || !result.rows) {
+        console.log(`  ✗ API 返回异常: ${JSON.stringify(result).substring(0, 300)}`);
+        break;
+      }
 
-    console.log(`📋 共 ${allItems.length} 条待处理`);
+      const rows = result.rows;
+      const total = result.total || 0;
+      console.log(`  ✓ 第${page}页: ${rows.length} 条 (总计 ${total})`);
 
-    for (let i = 0; i < allItems.length; i++) {
-      const item = allItems[i];
-      console.log(`[${i + 1}/${allItems.length}] ${item.title.substring(0, 50)}...`);
+      if (rows.length === 0) break;
 
-      try {
-        if (i > 0) {
-          await page.goto('https://ebuy.spdb.com.cn/#/notice', { waitUntil: 'networkidle', timeout: 30000 });
-          await sleep(2500);
-          // 确保列表加载完成
-          await page.waitForSelector('.list-item', { timeout: 15000 });
-          for (let p = 1; p < item.pageIndex; p++) await goToNextPage(page);
-          // 翻页后也要确保列表重新加载
-          await page.waitForSelector('.list-item', { timeout: 10000 });
-          await sleep(500);
+      // 日期过滤 + 客户端验证
+      let pageItems = rows;
+      if (mode === 'date' && targetDate) {
+        pageItems = rows.filter(item => {
+          const itemDate = (item.publishTime || item.createTime || '').substring(0, 10);
+          return itemDate === targetDate;
+        });
+        console.log(`  客户端过滤: ${rows.length} 条中有 ${pageItems.length} 条是 ${targetDate} 的`);
+      } else if (mode === 'latest') {
+        const remaining = count - totalCollected;
+        if (pageItems.length > remaining) {
+          pageItems = pageItems.slice(0, remaining);
+        }
+      }
+
+      // 逐条处理
+      for (const item of pageItems) {
+        const noticeId = item.noticeId || item.id;
+        const title = item.title || item.noticeName || '';
+        const publishTime = item.publishTime || item.createTime || '';
+        const noticeTypeCode = item.noticeType ? String(item.noticeType) : '';
+        const noticeType = item.noticeTypeName || item.typeName || NOTICE_TYPE_MAP[noticeTypeCode] || '';
+        const publishPart = item.publishPart || '';
+        const url = `${BASE_URL}/#/noticeDetail?noticeId=${noticeId}`;
+
+        console.log(`  [${totalCollected + 1}/${mode === 'date' ? '?' : count}] ${title.substring(0, 50)}...`);
+
+        // 解析 content
+        let content = '';
+        if (item.content) {
+          content = extractContent(item.content);
         }
 
-        const detail = await clickAndExtract(page, item.itemIndex);
-        if (!detail.content || detail.content.length < 200)
-          console.log(`    ⚠ 内容过短 (${detail.content?.length || 0} 字符)`);
+        // 如果 content 为空或过短，使用可用信息拼接
+        if (!content || content.length < 100) {
+          const parts = [];
+          if (title) parts.push(`标题: ${title}`);
+          if (publishTime) parts.push(`发布时间: ${publishTime}`);
+          if (noticeType) parts.push(`公告类型: ${noticeType}`);
+          if (publishPart) parts.push(`发布主体: ${publishPart}`);
+          if (item.purchaseProject) parts.push(`采购项目: ${item.purchaseProject}`);
+          if (item.projectName) parts.push(`项目名称: ${item.projectName}`);
+          content = parts.join('\n\n');
+        }
 
-        writer.addRow({
-          title: detail.title || item.title,
-          content: detail.content || item.title,
-          publishTime: detail.publishTime || item.publishTime,
-          url: detail.url,
-          noticeType: detail.noticeType || item.noticeType || ''
-        });
-        console.log(`    ✓ ${detail.content?.length || 0} 字符`);
+        const row = {
+          title,
+          content: content || title,
+          publishTime,
+          url,
+          noticeType,
+          noticeId,
+          scrapeTime,
+        };
 
-        if (i < allItems.length - 1) await sleep(2000 + Math.random() * 1000);
-      } catch (e) {
-        console.log(`    ✗ 失败: ${e.message}`);
-        writer.addRow({ title: item.title, content: item.title, publishTime: item.publishTime, url: '', noticeType: item.noticeType });
-        try { await page.goto('https://ebuy.spdb.com.cn/#/notice', { waitUntil: 'networkidle', timeout: 15000 }); await sleep(2000); } catch (_) {}
+        writer.addRow(row);
+        matchedRows.push(row);
+        totalCollected++;
+
+        if (content.length < 200) {
+          console.log(`    ⚠ content 较短 (${content.length} 字)`);
+        } else {
+          console.log(`    ✓ content ${content.length} 字`);
+        }
       }
+
+      // 终止条件检查
+      if (mode === 'latest' && totalCollected >= count) break;
+
+      if (mode === 'date' && targetDate) {
+        const lastItem = rows[rows.length - 1];
+        const lastDate = (lastItem.publishTime || lastItem.createTime || '').substring(0, 10);
+        if (lastDate && lastDate < targetDate) {
+          console.log(`  ✓ 当前页最早数据 ${lastDate} 早于目标日期 ${targetDate}，停止翻页`);
+          break;
+        }
+        if (page * pageSize >= total) break;
+      }
+
+      page++;
+      await sleep(2000 + Math.random() * 2000);
     }
 
-    console.log(`\n✅ 爬取完成，共 ${writer.count} 条记录`);
-    await page.close();
-    await context.close();
-  } finally {
-    await closeBrowser();
+    console.log(`\n[spdb_v2] 完成! 共采集 ${matchedRows.length} 条`);
+    console.log(`  输出: ${OUTPUT_JSON}`);
+
+    if (matchedRows.length === 0) {
+      console.log('  ℹ 未采集到数据（可能是当天无公告）');
+    }
+  } catch (e) {
+    console.error(`\n[spdb_v2] 失败: ${e.message}`);
+    process.exit(1);
   }
 }
 
-main().catch(e => { console.error('失败:', e.message); process.exit(1); });
+main().catch((e) => { console.error('失败:', e.message); process.exit(1); });

@@ -12,6 +12,24 @@ from config.settings import PROJECT_ROOT, SCRAPERS_DIR, RAW_DATA_DIR, LOGS_DIR, 
 MAX_SCRAPER_CONCURRENCY = 5
 MAX_LLM_CONCURRENCY = 3
 
+# Playwright 爬虫互斥锁：同一时间只允许 1 个 Playwright 爬虫运行
+# 避免多个浏览器实例争抢资源导致页面混乱
+PLAYWRIGHT_SEM = asyncio.Semaphore(1)
+
+
+def _is_playwright_scraper(scraper_name: str) -> bool:
+    """检测爬虫是否使用 Playwright（需要启动浏览器）"""
+    scraper_path = SCRAPERS_DIR / f"scrape_{scraper_name}.js"
+    if not scraper_path.exists():
+        return False
+    
+    try:
+        content = scraper_path.read_text(encoding='utf-8', errors='ignore')
+        # 检查是否使用了 Playwright
+        return 'playwright' in content.lower() or 'chromium.launch' in content or 'connectOverCDP' in content
+    except Exception:
+        return False
+
 
 class SiteTask:
     """单个站点的任务状态"""
@@ -243,10 +261,23 @@ async def _run_site_pipeline(
 
     # ── 阶段1: 爬虫执行 ──
     st.status = "scraping"
-    st.add_log(f"▶ 开始爬取: {st.site['name']}")
+    scraper_name = st.site.get("scraper_name", "")
+    is_playwright = _is_playwright_scraper(scraper_name)
+    
+    if is_playwright:
+        st.add_log(f"▶ 开始爬取: {st.site['name']} (Playwright 模式，需要独占浏览器)")
+    else:
+        st.add_log(f"▶ 开始爬取: {st.site['name']} (HTTP 模式)")
 
     async with scraper_sem:
-        scraper_ok = await _run_scraper_process(task, st, mode_args)
+        if is_playwright:
+            # Playwright 爬虫需要独占浏览器，避免多个实例冲突
+            async with PLAYWRIGHT_SEM:
+                st.add_log(f"🔒 获取 Playwright 锁，开始独占浏览器")
+                scraper_ok = await _run_scraper_process(task, st, mode_args)
+        else:
+            # HTTP 爬虫不受限制，直接运行
+            scraper_ok = await _run_scraper_process(task, st, mode_args)
 
     # 爬虫完成后立即检查取消
     if task.cancelled:

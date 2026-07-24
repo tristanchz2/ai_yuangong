@@ -281,7 +281,7 @@ async function main() {
       }
 
       writer.addRow({
-        title: item.messageTitle || '',
+        title: stripHtml(item.messageTitle || ''),
         noticeType: item.noticeType || MESSAGE_TYPE_MAP[item.messageType] || `类型${item.messageType}`,
         publishTime: (item.publishTime || item.startTime || '').substring(0, 10),
         url: `https://jc.abchina.com.cn/puc/#/noticeDetail?messageId=${item.messageId}&currentPage=1`,

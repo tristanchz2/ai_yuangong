@@ -1,13 +1,25 @@
 ---
 name: gen-scraper
 description: "URL → 全自动爬虫生成。Hermes 用浏览器探索网站，生成代码，测试，修复。不问问题。"
-version: 5.0.0
+version: 5.2.0
 ---
 
 # URL → 全自动爬虫生成
 
 用户发一个 URL，Hermes 全自动完成：浏览器探索 → 代码生成 → 测试 → 修复 → 注册。
 **全程不问用户任何问题。所有决策预设。**
+
+**🚨 严格限制：本 skill 只生成 HTTP/HTTPS 爬虫。绝对禁止使用 Playwright 或任何浏览器自动化。**
+如果 HTTP 方案失败，明确报告"HTTP 方案不可行"，退出让 gen-scraper-browser（第二层）处理。
+
+## 两层架构说明
+
+- **第一层（gen-scraper，本 skill）**：只做 HTTP 方案
+  - API 请求、HTML 解析、加密响应解密、TLS 指纹
+  - 必须尝试所有 HTTP 手段后才能判定失败
+- **第二层（gen-scraper-browser）**：Chrome CDP 方案
+  - 真实浏览器 + 远程调试端口
+  - 处理瑞数 WAF、需要执行 JS 挑战等场景
 
 ## 触发条件
 
@@ -76,7 +88,7 @@ ai_yuangong/
 
 | 决策项 | 预设值 |
 |--------|--------|
-| 爬虫语言 | Node.js（优先用内置 http/https 模块，必要时用 Playwright） |
+| 爬虫语言 | Node.js（只用内置 http/https 模块，禁止 Playwright） |
 | 输出格式 | JSON，增量写入 |
 | CLI 接口 | `--info` / `--latest N` / `--yesterday` / `--date YYYY-MM-DD` |
 | 工具函数 | `stripHtml` + `JsonWriter`（项目已有） |
@@ -85,30 +97,36 @@ ai_yuangong/
 | 数据输出路径 | `raw_data/<name>_data.json` |
 | 错误处理 | `requestWithBackoff`（限频退避） |
 | 请求间隔 | 2-5 秒 |
-| 浏览器自动化 | 仅当 HTTP 请求失败且页面显示数据时使用 Playwright |
 
-### 何时使用 Playwright
+### HTTP 方案失败判定标准
 
-**优先使用 HTTP 请求**（90% 的场景）：
-- 直接调用 API 获取 JSON 数据
-- 解析静态 HTML 页面
+**本 skill 只做 HTTP 方案。** 必须深入尝试以下所有手段，全部失败后才能退出：
 
-**切换到 Playwright 的条件**（必须同时满足）：
-1. 用 curl/HTTP 请求 API 返回 401/403/需要认证
-2. 浏览器打开页面能看到数据（说明数据在页面渲染后存在）
-3. 页面是 SPA（Vue/React/Angular），数据通过 JavaScript 动态加载
+1. **不同 User-Agent**（Chrome/Firefox/Safari/Mobile）
+2. **完整 Header 组合**：
+   - Referer（从目标网站首页）
+   - Origin
+   - X-Requested-With: XMLHttpRequest
+   - Accept/Accept-Language/Accept-Encoding
+3. **Cookie 模拟**：先请求首页获取 Cookie，再请求 API
+4. **TLS 指纹**：使用 cycletls 绕过 TLS 检测
+5. **Content-Type 切换**：application/json vs application/x-www-form-urlencoded
+6. **HTTP 方法**：GET/POST 互换
+7. **URL 变体**：检查是否有 /api/、/v1/、/rest/ 等前缀
 
-**Playwright 使用场景**：
-- 需要执行 JavaScript 才能获取数据
-- 需要模拟浏览器环境绕过反爬
-- 需要处理 Cookie/Session 认证
-- 需要等待异步数据加载完成
+**只有以上全部试过仍失败，才能判定 HTTP 方案不可行。**
+
+**常见陷阱：**
+- API 返回 403 → 不一定是反爬，可能只是缺少 Referer
+- 页面返回空 HTML → 可能是 SPA，但底层 API 仍可用
+- 需要 JS 渲染 → 优先找 API，不要直接放弃
+- API 返回加密数据（AES/DES） → 仍然可以用 HTTP 方案解密！参考 scrape_spdb.js
 
 **🚨 页面观察陷阱（必须读）：**
 
 很多网站（特别是银行采购平台）**同一个页面既有登录框又有公开数据**。不要看到登录框就判定"需要登录"。先观察 10 秒：
-- 页面左侧有公告列表 + 右侧有登录框 → 公告是公开的，用 Playwright 提取
-- 页面空白或被遮挡 → 真的需要登录，跳过
+- 页面左侧有公告列表 + 右侧有登录框 → 公告是公开的，底层 API 可直接请求
+- 页面空白或被遮挡 → 真的需要登录，HTTP 方案失败，退出让第二层处理
 
 详见 `references/page-observation-pitfalls.md`。
 
@@ -277,8 +295,8 @@ browser_console(expression=`
 
 ```bash
 terminal(command="curl -s 'https://example.com/detail/123' -o /tmp/detail.html && wc -l /tmp/detail.html")
-terminal(command="grep -oE '<div class=\"[^\"]*content[^\"]*\"' /tmp/detail.html | head -5")
-terminal(command="sed -n '/<div class=\"article-content\"/,/<\\/div>/p' /tmp/detail.html | head -30")
+terminal(command="grep -oE '<div class=\\\"[^\\\"]*content[^\\\"]*\\\"' /tmp/detail.html | head -5")
+terminal(command="sed -n '/<div class=\\\"article-content\\\"/,/<\\/div>/p' /tmp/detail.html | head -30")
 ```
 
 这是**最可靠的方式**，可以直接看真实 HTML 结构。
@@ -291,7 +309,6 @@ terminal(command="sed -n '/<div class=\"article-content\"/,/<\\/div>/p' /tmp/det
 terminal(command="cat /tmp/detail.html | python3 -c \"
 import sys, re
 html = sys.stdin.read()
-# 尝试多种选择器
 for cls in ['article-content', 'news_content', 'TRS_Editor', 'content', 'detail-content', 'post-content', 'article']:
     m = re.search(f'<div class=\\\\\"[^\\\\\"]*{cls}[^\\\\\"]*\\\\\">([\\\\s\\\\S]*?)</div>', html, re.IGNORECASE)
     if m:
@@ -309,8 +326,7 @@ for cls in ['article-content', 'news_content', 'TRS_Editor', 'content', 'detail-
 terminal(command="cat /tmp/detail.html | python3 -c \"
 import sys, re
 html = sys.stdin.read()
-# 提取所有段落
-paragraphs = re.findall(r'<p[^>]*>([\\s\\S]*?)</p>', html, re.IGNORECASE)
+paragraphs = re.findall(r'<p[^>]*>([\\\\s\\\\S]*?)</p>', html, re.IGNORECASE)
 texts = [re.sub(r'<[^>]+>', ' ', p).strip() for p in paragraphs]
 texts = [t for t in texts if len(t) > 20]
 print(f'Found {len(texts)} paragraphs')
@@ -363,6 +379,9 @@ const OUTPUT_JSON = path.join(__dirname, '..', 'raw_data', '<name>_data.json');
 // ===================== HTTP 请求 =====================
 // 根据目标网站选 http 或 https
 // 必须包含：重试、超时(15-30s)、错误处理
+// 如果需要 SSL 遗留重协商：
+// rejectUnauthorized: false, secureProtocol: 'TLS_method',
+// secureOptions: require('constants').SSL_OP_LEGACY_SERVER_CONNECT
 
 // ===================== 限频退避 =====================
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -478,6 +497,11 @@ async function main() {
   else if (dateIdx >= 0) { mode = 'date'; targetDate = args[dateIdx + 1]; }
   else if (latestIdx >= 0) { count = parseInt(args[latestIdx + 1]) || 5; }
 
+  const scrapeTime = formatScrapeTime();
+  // ★ JsonWriter 正确用法：第二个参数是对象 { source, scrapeTime }
+  // ★ JsonWriter 没有 close() 方法，不需要调用
+  const writer = new JsonWriter(OUTPUT_JSON, { source: '<name>', scrapeTime });
+
   // 1. 获取列表数据（API 或 HTML 解析）
   // 2. 日期过滤（如果有 targetDate）
   // 3. 获取详情（如果需要）- 必须调用 parseDetailPage
@@ -567,325 +591,103 @@ const MAX_PAGES = 10;
 13. **content 不能等于 title**：这是最常见的 bug！如果 content 只是标题重复，说明提取失败
 14. **从 Phase 1.6 获取的真实选择器必须用上**：不要用猜测的选择器
 
-### Playwright 爬虫代码示例
+### Phase 3: 测试验证（必须全部通过，不能跳过）
 
-当判定需要使用 Playwright 时，按以下结构生成代码：
+**3.1 检查 --info 输出**
 
-```javascript
-/**
- * <网站名称> (<缩写>) <描述>
- * 使用 Playwright 模拟浏览器获取动态渲染数据
- *
- * Usage:
- *   node scrape_<name>.js --info
- *   node scrape_<name>.js --latest 5
- *   node scrape_<name>.js --yesterday
- *   node scrape_<name>.js --date YYYY-MM-DD
- */
-
-const { chromium } = require('playwright');
-const fs = require('fs');
-const path = require('path');
-const { stripHtml } = require('./utility/stripHtml');
-const { JsonWriter } = require('./utility/JsonWriter');
-
-// ★ 路径只用一层 ..，因为爬虫在 scrapers/ 下运行
-const OUTPUT_JSON = path.join(__dirname, '..', 'raw_data', '<name>_data.json');
-
-// ===================== 日期工具 =====================
-function formatDate(d) {
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-function getYesterday() {
-  const d = new Date(); d.setDate(d.getDate() - 1); return formatDate(d);
-}
-function formatScrapeTime() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}`;
-}
-
-// ===================== Playwright 浏览器管理 =====================
-let browser = null;
-
-async function initBrowser() {
-  if (!browser) {
-    browser = await chromium.launch({
-      headless: true,  // 生产环境必须 headless
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-  }
-  return browser;
-}
-
-async function closeBrowser() {
-  if (browser) {
-    await browser.close();
-    browser = null;
-  }
-}
-
-// ===================== 限频退避（Playwright 版本） =====================
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-async function withRetry(fn, label, maxAttempts = 5) {
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      return await fn();
-    } catch (e) {
-      if (attempt < maxAttempts) {
-        const delay = attempt * 3000;  // 递增延迟：3s, 6s, 9s...
-        console.log(`    ⚠ ${label} 失败 (尝试 ${attempt}/${maxAttempts}): ${e.message}，等待 ${delay/1000}s...`);
-        await sleep(delay);
-      } else {
-        console.log(`    ✗ ${label}: 最终失败 - ${e.message}`);
-        throw e;
-      }
-    }
-  }
-}
-
-// ===================== 数据提取逻辑 =====================
-async function extractData(page, mode, count, targetDate) {
-  // 根据实际页面结构调整选择器
-  // 示例：等待数据加载完成
-  await page.waitForSelector('.data-list-item, .notice-item, tr[data-id]', { timeout: 30000 });
-  
-  // 提取列表数据
-  const items = await page.evaluate(() => {
-    const results = [];
-    // 根据实际页面结构修改选择器
-    const rows = document.querySelectorAll('.data-list-item, .notice-item, tr[data-id]');
-    
-    rows.forEach(row => {
-      const title = row.querySelector('.title, .notice-title, td:nth-child(2)')?.textContent?.trim() || '';
-      const publishTime = row.querySelector('.date, .publish-time, td:nth-child(3)')?.textContent?.trim() || '';
-      const url = row.querySelector('a')?.href || '';
-      const noticeType = row.querySelector('.type, .notice-type, td:nth-child(1)')?.textContent?.trim() || '';
-      
-      if (title && url) {
-        results.push({ title, publishTime, url, noticeType });
-      }
-    });
-    
-    return results;
-  });
-  
-  return items;
-}
-
-// ===================== 详情提取 =====================
-async function extractDetail(page, url) {
-  return await withRetry(async () => {
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
-    
-    // 等待内容加载
-    await page.waitForSelector('.content, .detail-content, .article-content, #content', { timeout: 10000 });
-    
-    const content = await page.evaluate(() => {
-      // 多策略提取
-      const selectors = [
-        '.content',
-        '.detail-content',
-        '.article-content',
-        '#content',
-        '.TRS_Editor',
-        '.news_content'
-      ];
-      
-      for (const sel of selectors) {
-        const el = document.querySelector(sel);
-        if (el) {
-          return el.innerText || el.textContent || '';
-        }
-      }
-      
-      // fallback: 提取所有 <p> 标签
-      const paragraphs = Array.from(document.querySelectorAll('p'))
-        .map(p => p.innerText || p.textContent || '')
-        .filter(t => t.trim().length > 20);
-      
-      return paragraphs.join('\n\n');
-    });
-    
-    return content;
-  }, '详情提取');
-}
-
-// ===================== 主流程 =====================
-async function main() {
-  const args = process.argv.slice(2);
-
-  // --info 必须输出合法 JSON
-  if (args.includes('--info')) {
-    console.log(JSON.stringify({
-      name: '<name>',
-      description: '<描述> (Playwright)',
-      modes: ['latest', 'yesterday', 'date'],
-      outputFile: 'raw_data/<name>_data.json',
-    }));
-    return;
-  }
-
-  // 参数解析
-  let mode = 'latest', count = 5, targetDate = null;
-  const yesterdayIdx = args.indexOf('--yesterday');
-  const latestIdx = args.indexOf('--latest');
-  const dateIdx = args.indexOf('--date');
-  if (yesterdayIdx >= 0) { mode = 'date'; targetDate = getYesterday(); }
-  else if (dateIdx >= 0) { mode = 'date'; targetDate = args[dateIdx + 1]; }
-  else if (latestIdx >= 0) { count = parseInt(args[latestIdx + 1]) || 5; }
-
-  const writer = new JsonWriter(OUTPUT_JSON, { source: '<网站中文名>', scrapeTime: formatScrapeTime() });
-
-  try {
-    const browser = await initBrowser();
-    const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      viewport: { width: 1920, height: 1080 }
-    });
-    const page = await context.newPage();
-
-    console.log(`🚀 开始爬取 <网站名称> (${mode}模式)...`);
-
-    // 访问列表页
-    await page.goto('<列表页URL>', { waitUntil: 'networkidle', timeout: 30000 });
-
-    // 提取列表数据
-    let items = await extractData(page, mode, count, targetDate);
-
-    // 日期过滤
-    if (mode === 'date' && targetDate) {
-      items = items.filter(item => item.publishTime.includes(targetDate));
-    }
-
-    // 数量限制
-    if (mode === 'latest') {
-      items = items.slice(0, count);
-    }
-
-    console.log(`📋 找到 ${items.length} 条记录`);
-
-    // 逐条提取详情
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      console.log(`[${i + 1}/${items.length}] ${item.title.substring(0, 40)}...`);
-
-      try {
-        const content = await extractDetail(page, item.url);
-
-        if (!content || content.length < 200) {
-          console.log(`    ⚠ 内容过短 (${content?.length || 0} 字符)`);
-        }
-
-        writer.addRow({
-          title: item.title,
-          content: content || item.title,
-          publishTime: item.publishTime,
-          url: item.url,
-          noticeType: item.noticeType || ''
-        });
-
-        // 请求间隔
-        if (i < items.length - 1) {
-          await sleep(2000 + Math.random() * 1000);
-        }
-      } catch (e) {
-        console.log(`    ✗ 详情提取失败: ${e.message}`);
-        // 即使详情失败，也记录基本信息
-        writer.addRow({
-          title: item.title,
-          content: item.title,  // fallback
-          publishTime: item.publishTime,
-          url: item.url,
-          noticeType: item.noticeType || ''
-        });
-      }
-    }
-
-    console.log(`\n✅ 爬取完成，共 ${writer.count} 条记录`);
-    await page.close();
-    await context.close();
-  } finally {
-    await closeBrowser();
-  }
-}
-
-main().catch((e) => { console.error('失败:', e.message); process.exit(1); });
-```
-
-**Playwright 关键要点：**
-
-1. **headless: true**：生产环境必须无头模式
-2. **withRetry 包装**：网络请求和页面操作都要有重试机制
-3. **waitForSelector**：等待关键元素加载完成，不要硬编码 sleep
-4. **page.evaluate**：在浏览器上下文中执行数据提取逻辑
-5. **多策略提取**：和 HTTP 版本一样，先尝试精确选择器，再 fallback
-6. **请求间隔**：即使是浏览器自动化，也要保持 2-5 秒间隔
-7. **错误处理**：单条详情失败不影响整体爬取，记录基本信息继续
-8. **资源清理**：finally 块中关闭浏览器，避免内存泄漏
-
-### Phase 3: 测试验证
-
-**3.1 验证 --info**
 ```bash
 cd /Users/tristcz/project/ai_yuangong/scrapers
 node scrape_<name>.js --info
 ```
-必须输出合法 JSON。
 
-**3.2 验证 --latest 1（单条测试，快速发现问题）**
+必须输出合法 JSON，包含 `name` 和 `description` 字段。
+
+**3.2 运行 --latest 1 生成测试数据**
+
 ```bash
+cd /Users/tristcz/project/ai_yuangong/scrapers
 node scrape_<name>.js --latest 1
 ```
 
-**🚨 3.3 验证 content 质量（必须做！）**
+必须成功执行，生成 `raw_data/<name>_data.json`。
 
-测试完成后，立即检查输出的 JSON：
+**3.3 完整验证脚本（必须执行，不能手动跳过）**
+
+运行以下验证脚本，检查所有必需条件：
 
 ```bash
 cd /Users/tristcz/project/ai_yuangong
 python3 -c "
-import json
-with open('raw_data/<name>_data.json') as f:
-    data = json.load(f)
+import json, sys
+
+# 1. 检查输出文件
+try:
+    with open('raw_data/<name>_data.json') as f:
+        data = json.load(f)
+except FileNotFoundError:
+    print('❌ FAIL: 输出文件不存在')
+    sys.exit(1)
+
+# 2. 检查输出结构
+if 'rows' not in data or not data['rows']:
+    print('❌ FAIL: 输出为空或无 rows 字段')
+    sys.exit(1)
+
+# 3. 检查必需字段
 row = data['rows'][0]
-print(f'Title: {row[\"title\"]}')
-print(f'Content length: {len(row[\"content\"])} chars')
-print(f'Content preview: {row[\"content\"][:200]}')
-print()
+required = ['title', 'content', 'publishTime', 'url']
+missing = [k for k in required if k not in row or not row[k]]
+if missing:
+    print(f'❌ FAIL: 缺少必需字段: {missing}')
+    sys.exit(1)
+
+# 4. 检查 content 质量
 if len(row['content']) < 200:
-    print('❌ FAIL: Content too short (< 200 chars)')
-    print('Need to fix detail parsing!')
-elif row['content'].strip() == row['title'].strip():
-    print('❌ FAIL: Content equals title (extraction failed)')
-    print('Need to fix detail parsing!')
-else:
-    print('✅ PASS: Content looks good')
+    print(f'❌ FAIL: content 过短 ({len(row[\"content\"])} 字符，需要 >= 200)')
+    sys.exit(1)
+
+if row['content'].strip() == row['title'].strip():
+    print('❌ FAIL: content 等于 title（说明详情页解析失败）')
+    sys.exit(1)
+
+# 5. 检查 scrapeTime 格式
+if 'scrapeTime' in data:
+    if 'T' not in data['scrapeTime']:
+        print(f'❌ FAIL: scrapeTime 格式错误: {data[\"scrapeTime\"]}（应该是 YYYY-MM-DDTHH）')
+        sys.exit(1)
+
+print(f'✅ 输出结构正确（{len(data[\"rows\"])} 条记录）')
+print(f'✅ content 质量合格（{len(row[\"content\"])} 字符）')
+print('✅ 所有验证通过')
 "
 ```
 
-**如果 content 验证失败：**
+**如果验证失败，必须修复后重新运行，直到全部通过。**
 
-1. 回到 Phase 1.6，重新分析详情页 HTML
-2. 用 terminal + curl 查看真实 HTML：`curl -s <detail_url> | head -200`
-3. 找到正确的正文选择器
-4. 用 patch 修复 parseDetailPage 函数
-5. 重新测试，直到 content 验证通过
+**3.4 常见问题修复**
 
-**3.4 验证 --latest 3（批量测试）**
+根据验证失败的原因，修复对应问题：
+
+| 失败原因 | 修复方法 |
+|---------|---------|
+| 输出文件不存在 | 检查 OUTPUT_JSON 路径：`path.join(__dirname, '..', 'raw_data', '<name>_data.json')` |
+| 缺少必需字段 | 检查 `writer.addRow()` 是否包含 title/content/publishTime/url |
+| content 过短 | 详情页解析失败，用 `curl -s <detail_url>` 查看真实 HTML，调整选择器 |
+| content 等于 title | 没有正确提取正文，只拿到了标题。检查详情页解析逻辑 |
+| scrapeTime 格式错误 | 使用 `formatScrapeTime()` 函数，不要用 `toISOString()` |
+
+**修复后必须重新运行验证脚本（3.2 + 3.3），直到全部通过。**
+
+**3.5 最终测试**
+
+验证通过后，再测试批量模式：
+
 ```bash
+cd /Users/tristcz/project/ai_yuangong/scrapers
 node scrape_<name>.js --latest 3
 ```
-检查所有条目的 content 都正常。
 
-**3.5 验证自动发现**
-```bash
-cd /Users/tristcz/project/ai_yuangong
-python3 run_scrapers.py --list
-```
-新爬虫必须出现在列表中。
+确保能正常爬取多条数据。
 
 ### Phase 4: 失败修复
 
@@ -897,29 +699,14 @@ python3 run_scrapers.py --list
    - 字段名错误 → 对比 API 真实响应
    - 网络错误 → 检查请求头（Referer/User-Agent）
    - 解析错误 → 回浏览器重新看页面结构
+   - **SSL 重协商错误** → 添加 `secureOptions: require('constants').SSL_OP_LEGACY_SERVER_CONNECT`
    - **content 只有标题** → 详情页 HTML 结构分析错误，重新用 curl 查看真实 HTML
    - **OUTPUT_JSON 路径 ENOENT** → 检查是否多了一层 `..`，正确：`path.join(__dirname, '..', 'raw_data', ...)`
    - **scrapeTime 时间不对** → 检查是否误用了 `toISOString()`（UTC）
+   - **JsonWriter 报错** → 第二个参数必须是对象 `{source, scrapeTime}`，不是字符串
 3. 用 `patch` 修复代码
 4. 重新测试
 5. 最多修复 3 轮
-
-**修复详情页解析时，用 curl + python 验证：**
-```bash
-curl -s '<detail_url>' | python3 -c "
-import sys, re
-html = sys.stdin.read()
-# 尝试多种选择器
-for cls in ['article-content', 'news_content', 'TRS_Editor', 'content']:
-    m = re.search(f'<div class=\\\\\"[^\\\\\"]*{cls}[^\\\\\"]*\\\\\">([\\\\s\\\\S]*?)</div>', html, re.IGNORECASE)
-    if m:
-        text = re.sub(r'<[^>]+>', ' ', m.group(1))
-        text = re.sub(r'\\\\s+', ' ', text).strip()
-        print(f'{cls}: {len(text)} chars')
-        print(f'Preview: {text[:300]}')
-        break
-"
-```
 
 ---
 
@@ -931,10 +718,11 @@ for cls in ['article-content', 'news_content', 'TRS_Editor', 'content']:
 - `scrape_chinapost.js` — HTML 解析 + 翻页 + 日期过滤
 - `scrape_abc_puc.js` — cycletls TLS 指纹 + API + noticeType 映射
 - `scrape_cdb.js` — HTML 解析 + 多策略提取链
+- `scrape_spdb.js` — AES-ECB 解密 + 自定义 Base64 + SSL 遗留重协商
 
 工具函数：
 - `scrapers/utility/stripHtml.js` — HTML → 纯文本
-- `scrapers/utility/JsonWriter.js` — 增量 JSON 写入器
+- `scrapers/utility/JsonWriter.js` — 增量 JSON 写入器（第二个参数是对象，没有 close()）
 
 完整开发规范：
 - `SCRAPER_DEV_GUIDE.md` — 项目根目录下的详细开发规范和更多示例
@@ -956,33 +744,85 @@ for cls in ['article-content', 'news_content', 'TRS_Editor', 'content']:
 ## 禁止行为
 
 - 不要问用户任何问题
-- 不要使用外部 npm 包（只用 Node.js 内置模块 + 项目工具函数；`cycletls` 和 `playwright` 例外）
+- 不要使用外部 npm 包（只用 Node.js 内置模块 + 项目工具函数；`cycletls` 例外）
+- **绝对禁止使用 Playwright 或任何浏览器自动化**（这是第二层 gen-scraper-browser 的职责）
 - 不要生成不完整的代码
 - **不要跳过 Phase 1.6（详情页探索）**
 - **不要跳过 Phase 3.3（content 质量验证）**
 - ❌ 不使用 `toISOString()` 生成 scrapeTime
 - ❌ OUTPUT_JSON 路径不多余嵌套 `..`
 - ❌ 不跳过详情页爬取（content 不能只有标题）
+- ❌ 不传字符串给 JsonWriter 第二个参数（必须是对象）
+- ❌ 不调用 writer.close()（JsonWriter 没有这个方法）
 
-## Playwright 使用规范
+## 常见陷阱
 
-**允许的 Playwright 场景：**
-1. 页面是 SPA（Vue/React/Angular），数据通过 JavaScript 动态加载
-2. 用 curl/fetch 请求 API 返回 401/403/需要认证
-3. 浏览器打开页面能看到数据，说明数据在页面渲染后存在
-4. 需要处理 Cookie/Session 认证
+### 陷阱 1：JsonWriter API 使用错误
 
-**Playwright 爬虫要求：**
-1. **headless: true**：生产环境必须无头模式
-2. **withRetry 包装**：所有页面操作都要有重试机制（最多 5 次，递增延迟）
-3. **waitForSelector**：等待关键元素加载完成，不要硬编码 sleep
-4. **page.evaluate**：在浏览器上下文中执行数据提取逻辑
-5. **多策略提取**：先尝试精确选择器，再 fallback 到通用选择器或 `<p>` 标签
-6. **请求间隔**：即使是浏览器自动化，也要保持 2-5 秒间隔
-7. **错误处理**：单条详情失败不影响整体爬取，记录基本信息继续
-8. **资源清理**：finally 块中关闭浏览器，避免内存泄漏
-9. **保持接口一致**：仍然支持 `--info`、`--latest N`、`--yesterday`、`--date YYYY-MM-DD`
-10. **输出格式一致**：仍然使用 `JsonWriter` 输出到 `raw_data/<name>_data.json`
+**错误用法：**
+```javascript
+const writer = new JsonWriter(OUTPUT_JSON, '2026-07-24T10');  // ❌ 第二个参数应该是对象
+writer.close();  // ❌ JsonWriter 没有 close() 方法
+```
+
+**正确用法：**
+```javascript
+const writer = new JsonWriter(OUTPUT_JSON, { source: 'site', scrapeTime });  // ✓
+// JsonWriter 是同步写入的，不需要 close()
+```
+
+### 陷阱 2：SSL/TLS 遗留重协商错误
+
+**症状：**
+```
+EPROTO: unsafe legacy renegotiation disabled
+```
+
+**原因：** Node.js 17+ 默认禁用不安全的 SSL 重协商，某些银行服务器使用旧版 TLS 配置。
+
+**解决方案：**
+```javascript
+const reqOptions = {
+  hostname: 'example.com',
+  path: '/api/data',
+  method: 'GET',
+  headers: { /* ... */ },
+  rejectUnauthorized: false,
+  secureProtocol: 'TLS_method',
+  secureOptions: require('constants').SSL_OP_LEGACY_SERVER_CONNECT,  // 关键！
+};
+```
+
+### 陷阱 3：加密的 API 响应（HTTP 方案可解决）
+
+**识别：** 某些银行网站的 API 返回加密数据（如 AES + 自定义 Base64）。
+
+**解决方案：**
+1. 查看页面 JS 源码，找到解密逻辑
+2. 分析加密算法（AES/DES/RSA）、密钥、加密模式（ECB/CBC）
+3. 在爬虫中复现相同的解密逻辑
+4. 参考 `scrape_spdb.js` 的 AES-ECB + 自定义 Base64 实现
+
+**关键：** 这是 HTTP 方案可以解决的，不需要浏览器自动化！
+
+### 陷阱 4：瑞数 WAF（必须失败并交给第二层）
+
+**症状：**
+```
+HTTP 412 Precondition Failed + JavaScript 挑战页面
+```
+
+**判断标准：**
+- 即使使用了正确的 User-Agent、Referer、Cookie，仍然返回 412
+- 页面返回的是 JS 挑战代码，需要执行才能生成正确的 cookie
+- 尝试了 cycletls TLS 指纹模拟后仍然失败
+
+**正确做法：**
+- 明确报告：瑞数 WAF 需要浏览器环境执行 JS 挑战，HTTP 方案无法绕过
+- **不要尝试使用 Playwright**，这是第二层 gen-scraper-browser 的职责
+- 退出并让系统自动进入第二层
+
+**参考案例：** `scrape_hfbank.js`（徽商银行）必须使用 Chrome CDP 方案。
 
 ## 自动化集成（server.py 调用）
 
@@ -1004,6 +844,8 @@ for cls in ['article-content', 'news_content', 'TRS_Editor', 'content']:
 | content 过短 (<200字) | 实现多策略提取链，fallback 到 `<p>` 标签提取 |
 | noticeType 丢失 | 如果平台 API/HTML 中有类型信息，务必保留在 row 中 |
 | 被 WAF 拦截 | 考虑使用 `cycletls` 模拟 TLS 指纹 |
+| SSL 重协商错误 | 添加 `secureOptions: require('constants').SSL_OP_LEGACY_SERVER_CONNECT` |
+| JsonWriter 报错 | 第二个参数必须是对象 `{source, scrapeTime}`，不是字符串；没有 `close()` 方法 |
 | 日期过滤不生效 | 某些 API 的日期参数是**静默忽略**的（返回所有数据但不报错）。必须在客户端做日期过滤：翻页时检查每条记录的日期，找到比目标日期更早的数据时提前终止（数据通常按时间倒序）。验证方法：先用固定日期调 API，对比返回的 `total` 和实际匹配数。如果 `total` 远大于预期 → API 日期过滤不生效 |
 | run_scrapers.py --list 看不到新爬虫 | 检查爬虫文件是否在 `scrapers/scrape_<name>.js`，文件名是否正确 |
 | **Agent 停下来问问题** | **检查 scraper.py 是否使用了 `--yolo` 参数！** 没有这个参数，命令审批会拒绝 shell 命令，agent 以为用户拒绝，就会停下来问。这是最常见的挂起原因 |
