@@ -824,6 +824,80 @@ HTTP 412 Precondition Failed + JavaScript 挑战页面
 
 **参考案例：** `scrape_hfbank.js`（徽商银行）必须使用 Chrome CDP 方案。
 
+### 陷阱 5：附件提取模式（当 prompt 提示"标书在附件中"）
+
+**触发条件：** 用户通过前端表单勾选"该网站的标书内容在附件中"，后端会在 prompt 中追加：
+> "注意：该网站的标书内容在附件中（通常是 PDF 或 DOCX 格式）。爬虫需要下载附件并调用 scrapers/utility/extract_attachment.py 提取内容。"
+
+**项目已有工具：** `scrapers/utility/extract_attachment.py`
+- 支持格式：PDF, DOCX, XLSX, PPTX
+- 用法：`python3 scrapers/utility/extract_attachment.py <文件路径>`
+- 输出：提取的纯文本到 stdout
+
+**生成爬虫时必须包含的附件提取逻辑：**
+
+```javascript
+const { execSync } = require('child_process');
+
+// 从 HTML 中提取附件 URL
+function extractAttachmentUrls(html) {
+  const urls = [];
+  const patterns = [
+    /href="([^"]*\.(?:pdf|docx?|xlsx?|pptx?)[^"]*)"/gi,
+  ];
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(html)) !== null) {
+      let url = match[1];
+      if (url.startsWith('/')) url = `${BASE_URL}${url}`;
+      else if (!url.startsWith('http')) url = `${BASE_URL}/${url}`;
+      urls.push(url);
+    }
+  }
+  return [...new Set(urls)];
+}
+
+// 下载附件并提取内容
+function extractAttachmentContent(attachmentUrl) {
+  const ext = require('path').extname(attachmentUrl).split('?')[0].toLowerCase() || '.pdf';
+  const tmpFile = `/tmp/attachment_${Date.now()}${ext}`;
+  try {
+    execSync(`curl -sL '${attachmentUrl}' -o '${tmpFile}'`, { stdio: 'ignore', timeout: 30000 });
+    const content = execSync(
+      `python3 ${require('path').join(__dirname, 'utility', 'extract_attachment.py')} '${tmpFile}'`,
+      { encoding: 'utf8', maxBuffer: 50 * 1024 * 1024, timeout: 60000 }
+    ).trim();
+    execSync(`rm -f '${tmpFile}'`);
+    return content;
+  } catch (e) {
+    console.warn(`    ⚠ 附件提取失败: ${e.message}`);
+    try { execSync(`rm -f '${tmpFile}'`); } catch {}
+    return '';
+  }
+}
+```
+
+**主流程中的用法：**
+```javascript
+// 在详情页解析后，如果 HTML content 不够，尝试附件
+let content = parseDetailPage(html);
+if (content.length < 200) {
+  const attachmentUrls = extractAttachmentUrls(html);
+  if (attachmentUrls.length > 0) {
+    console.log(`    📎 发现 ${attachmentUrls.length} 个附件，尝试提取...`);
+    const attachmentContent = extractAttachmentContent(attachmentUrls[0]);
+    if (attachmentContent.length > content.length) {
+      content = attachmentContent;
+      console.log(`    ✓ 附件提取成功 (${content.length} 字符)`);
+    }
+  }
+}
+```
+
+**注意：** 附件 URL 可能需要相对路径转绝对路径，注意检查 `BASE_URL` 是否正确。
+
+**设计原则：** 附件提取是用户驱动的，不是自动检测的。如果用户没有勾选"标书在附件中"，不要尝试附件提取。这是一个简单的一次性参数，不需要持久化存储。
+
 ## 自动化集成（server.py 调用）
 
 当通过 `hermes chat -q` 作为子进程调用时：
