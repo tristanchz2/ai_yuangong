@@ -25,8 +25,14 @@ def _is_playwright_scraper(scraper_name: str) -> bool:
     
     try:
         content = scraper_path.read_text(encoding='utf-8', errors='ignore')
-        # 检查是否使用了 Playwright
-        return 'playwright' in content.lower() or 'chromium.launch' in content or 'connectOverCDP' in content
+        # 只检查实际的模块导入，避免注释中出现 playwright 被误判
+        return (
+            "require('playwright')" in content
+            or 'require("playwright")' in content
+            or "require('playwright-extra')" in content
+            or 'require("playwright-extra")' in content
+            or 'connectOverCDP' in content
+        )
     except Exception:
         return False
 
