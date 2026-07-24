@@ -38,54 +38,41 @@
 
 ## 使用方式
 
-### 方式一：Docker 部署（推荐）
-
-#### 前置条件
+### 前置条件
 
 1. **安装 Docker**
    - macOS/Windows: 安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)
    - Linux: `sudo apt install docker.io`
 
-2. **准备 MySQL 数据库**
+2. **准备 MySQL 数据库**  
    仅支持 MySQL 5.7.8+，推荐 MySQL 8.0+
 
-3. **配置 Hermes skill**（如需爬虫自动生成功能）
-   
-   项目包含两个 skill 管理脚本，用途不同：
-   
-   **`setup_hermes.sh`** - 本地 skill 安装
-   - 功能：将项目的 `.hermes/skills/` 复制到 `~/.hermes/skills/`
-   - 使用场景：本机部署前，让 Hermes 能识别自定义 skills（爬虫生成等）
-   - 命令：`bash setup_hermes.sh`
-   
-   **`sync_hermes_to_server.sh`** - 远程环境同步
-   - 功能：将本地完整的 Hermes 环境（skills、sessions、memory、config）同步到远程服务器
-   - 使用场景：将本地开发环境迁移到服务器
-   - 命令：`bash sync_hermes_to_server.sh user@server`
-   
-   **典型流程：**
+3. **配置 Hermes skill**（如需爬虫自动生成功能）  
+   - 从 https://github.com/NousResearch/hermes-agent 下载Hermes agent并安装，按照指引配置Hermes
    ```bash
-   # 1. 本地开发时同步到服务器
-   bash sync_hermes_to_server.sh
-   
-   # 2. SSH 到服务器后安装 skills
-   ssh user@server
-   cd /path/to/ai_yuangong
-   bash setup_hermes.sh
+   # 测试 Hermes 是能正常使用
+   hermes chat -q "hello"
    ```
-
-4. **平台支持**
+   - 项目包含两个 skill 管理脚本，用途不同：  
+      1. skill/gen-scraper - 尝试通过静态方法实现爬虫  
+      2. skill/gen-scraper-browser - 通过模拟浏览器动态获取信息
+   ```
+   # 安装这两个 skills 到 $HOME/.hermes 根目录
+   bash setup_hermes.sh`
+   ```
+   
+5. **平台支持**
    - ✅ macOS：完全支持
    - ✅ Linux：完全支持
    - ❌ Windows：不原生支持（WSL2 环境下可能可用，但未测试）
 
-5. **虚拟显示器（Xvfb）**
+6. **虚拟显示器（Xvfb）**
    - Docker 镜像已内置 Xvfb，容器启动时自动启用
    - 源码部署时需手动安装：`sudo apt install xvfb`
    - 启动命令使用 `xvfb-run --auto-servernum python server.py`
    - 作用：让 Chrome 浏览器在无 GUI 环境下以有头模式运行，保持反爬虫能力
 
-#### 快速启动
+### 方式一：Docker 部署（推荐）
 
 ```bash
 # 1. 克隆项目
@@ -94,17 +81,7 @@ cd ai_yuangong
 
 # 2. 配置环境变量
 cp .env.example .env
-# 编辑 .env，填入：
-#   - DB_HOST: MySQL 地址（容器内用 host.docker.internal 访问宿主机数据库）
-#   - DB_PORT: 3306
-#   - DB_USER: app_user
-#   - DB_PASSWORD: 你的数据库密码
-#   - DB_NAME: ai_yuangong
-#   - OPENAI_API_KEY: LLM API 密钥
-#   - OPENAI_BASE_URL: API 地址
-#   - OPENAI_MODEL: 模型名称
-#   - ADMIN_PASSWORD: 管理员密码
-#   - APP_MODE: debug 或 release
+# 参考注释填写.env
 
 # 3. 构建镜像（首次需要 5-10 分钟）
 docker build -t ai-yuangong .
@@ -123,47 +100,6 @@ docker logs -f ai-yuangong
 启动后访问：
 - 前端页面：http://localhost:8000/
 - 管理后台：http://localhost:8000/admin
-
-#### 常用命令
-
-```bash
-# 停止容器
-docker stop ai-yuangong
-
-# 启动容器
-docker start ai-yuangong
-
-# 重启容器
-docker restart ai-yuangong
-
-# 查看运行状态
-docker ps
-
-# 进入容器调试
-docker exec -it ai-yuangong /bin/bash
-
-# 运行爬虫（在容器内）
-docker exec -it ai-yuangong python scripts/run_scrapers.py --all --yesterday
-
-# 提取字段（在容器内）
-docker exec -it ai-yuangong python scripts/extract_fields.py
-```
-
-#### 更新镜像
-
-```bash
-# 拉取最新代码
-git pull
-
-# 重新构建镜像（依赖层已缓存，通常很快）
-docker build -t ai-yuangong .
-
-# 删除旧容器
-docker rm -f ai-yuangong
-
-# 重新运行
-docker run -d -p 8000:8000 -v $(pwd)/.env:/app/.env:ro --name ai-yuangong ai-yuangong
-```
 
 ### 方式二：源码部署
 
@@ -190,30 +126,6 @@ npm install
 npx playwright install chromium
 ```
 
-#### 配置
-
-复制 `.env.example` 为 `.env`，编辑以下配置：
-
-```env
-# LLM 配置（用于字段提取）
-OPENAI_API_KEY=your-api-key
-OPENAI_BASE_URL=http://your-llm-server/v1
-OPENAI_MODEL=your-model-name
-
-# 应用模式: debug / release
-APP_MODE=debug
-
-# 管理员密码
-ADMIN_PASSWORD=your-password
-
-# MySQL 数据库（需要先手动建库，表会自动创建）
-DB_HOST=127.0.0.1
-DB_PORT=3306
-DB_USER=app_user
-DB_PASSWORD=your-db-password
-DB_NAME=ai_yuangong
-```
-
 #### 启动服务
 
 ```bash
@@ -227,6 +139,9 @@ uvicorn server:app --reload --port 8000
 启动后访问：
 - 前端页面：http://localhost:8000/
 - 管理后台：http://localhost:8000/admin
+
+
+## 开发者调试
 
 ### 运行爬虫
 
