@@ -124,7 +124,7 @@ async def _cleanup_scraper_files(scraper_name: str):
             f.unlink()
 
 
-async def _run_hermes_generate_step(task_id: str, url: str, custom_name: Optional[str], reference_urls: Optional[list[str]], skill_name: str):
+async def _run_hermes_generate_step(task_id: str, url: str, custom_name: Optional[str], reference_urls: Optional[list[str]], skill_name: str, has_attachment: bool = False):
     """单步执行：用指定 skill 调用 Hermes 生成爬虫。返回 True 表示成功，False 表示失败。"""
     task = tasks[task_id]
     log_file = PROJECT_ROOT / "logs" / f"{task_id}_{skill_name}.log"
@@ -148,6 +148,9 @@ async def _run_hermes_generate_step(task_id: str, url: str, custom_name: Optiona
         if reference_urls and len(reference_urls) > 0:
             refs_text = "\n".join([f"- {ref_url}" for ref_url in reference_urls])
             prompt += f"\n\n参考以下详情页 URL，学习页面结构和选择器：\n{refs_text}\n\n优先从这些参考页面分析 HTML 结构和数据提取规则。"
+
+        if has_attachment:
+            prompt += "\n\n重要：该网站的标书内容可能存在附件中（通常是 PDF 或 DOCX 格式）。爬虫需要下载附件并调用 scrapers/utility/extract_attachment.py 提取内容并把它拼接进content里（如果失效，可以在你生成的爬虫代码中使用其他办法）。"
 
         cmd = ['hermes', 'chat', '-q', prompt, '-s', skill_name, '--yolo']
 
@@ -314,7 +317,7 @@ async def _run_hermes_generate_step(task_id: str, url: str, custom_name: Optiona
         return False
 
 
-async def run_hermes_generate(task_id: str, url: str, custom_name: Optional[str] = None, reference_urls: Optional[list[str]] = None):
+async def run_hermes_generate(task_id: str, url: str, custom_name: Optional[str] = None, reference_urls: Optional[list[str]] = None, has_attachment: bool = False):
     """后台任务：两步策略生成爬虫。Step 1: gen-scraper, Step 2: gen-scraper-browser (兜底)"""
     task = tasks[task_id]
     task['status'] = 'running'
@@ -324,7 +327,7 @@ async def run_hermes_generate(task_id: str, url: str, custom_name: Optional[str]
 
     # ── Step 1: gen-scraper（HTTP API 方案）──
     task['message'] = '步骤1: 使用 gen-scraper（HTTP API 方案）'
-    step1_ok = await _run_hermes_generate_step(task_id, url, custom_name, reference_urls, 'gen-scraper')
+    step1_ok = await _run_hermes_generate_step(task_id, url, custom_name, reference_urls, 'gen-scraper', has_attachment)
 
     if step1_ok:
         task['strategy_used'] = 'gen-scraper'
@@ -341,7 +344,7 @@ async def run_hermes_generate(task_id: str, url: str, custom_name: Optional[str]
     await _cleanup_scraper_files(scraper_name)
 
     task['status'] = 'running'
-    step2_ok = await _run_hermes_generate_step(task_id, url, custom_name, reference_urls, 'gen-scraper-browser')
+    step2_ok = await _run_hermes_generate_step(task_id, url, custom_name, reference_urls, 'gen-scraper-browser', has_attachment)
 
     task['finished_at'] = time.time()
     task['duration'] = task['finished_at'] - task['started_at']
