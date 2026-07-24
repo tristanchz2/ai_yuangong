@@ -1,8 +1,8 @@
-# AI 员工 (ai_yuangong)
+# AI 员工
 
 ## 项目目标
 
-聚合国内主要金融机构（银行）的政府采购平台数据，为供应商和采购人员提供一站式采购信息检索服务。
+聚合多家银行招投标网站，自动爬取标书，自动提取关键字段，支持关键词订阅，自动增删网站（增加网站通过调用Hermes agent模仿项目架构，生成爬虫代码，有一定概率失败）
 
 ## 实现方式
 
@@ -17,6 +17,7 @@
 - **后端**：Python 3.x + FastAPI + uvicorn
 - **爬虫**：Node.js + Playwright（浏览器自动化）+ cycletls（TLS 指纹绕过）
 - **AI 提取**：OpenAI 兼容 API（支持本地部署的 LLM）
+- **AI代码生成** Hermes agent + 自定义skill
 - **数据库**：MySQL 8.0（aiomysql 异步连接池）
 - **前端**：原生 HTML/JS 单页应用
 
@@ -46,17 +47,12 @@
    - Linux: `sudo apt install docker.io`
 
 2. **准备 MySQL 数据库**
-   - 可以在宿主机安装 MySQL 8.0+
-   - 或使用云数据库（阿里云 RDS、腾讯云 MySQL 等）
-   - **只需建库，表会自动创建**
+   仅支持MySQL 5.7.8+，推荐MySQL 8.0+
 
-   ```sql
-   -- 登录 MySQL 后执行
-   CREATE DATABASE ai_yuangong CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-   CREATE USER 'app_user'@'%' IDENTIFIED BY 'your_password';
-   GRANT ALL PRIVILEGES ON ai_yuangong.* TO 'app_user'@'%';
-   FLUSH PRIVILEGES;
-   ```
+3. **迁移Hermes skill**
+   在项目根目录执行
+   ```bash
+   
 
 #### 快速启动
 
@@ -191,7 +187,7 @@ DB_NAME=ai_yuangong
 
 ```bash
 # 方式 A：直接运行
-python server.py
+xvfb-run --auto-servernum python server.py
 
 # 方式 B：开发模式（热重载）
 uvicorn server:app --reload --port 8000
