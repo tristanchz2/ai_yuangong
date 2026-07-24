@@ -1,8 +1,8 @@
-# AI 员工 (ai_yuangong)
+# AI 员工
 
 ## 项目目标
 
-聚合国内主要金融机构（银行）的政府采购平台数据，为供应商和采购人员提供一站式采购信息检索服务。
+聚合多家银行招投标网站，自动爬取标书，自动提取关键字段，支持关键词订阅，自动增删网站（增加网站通过调用Hermes agent模仿项目架构，生成爬虫代码，有一定概率失败）
 
 ## 实现方式
 
@@ -17,6 +17,7 @@
 - **后端**：Python 3.x + FastAPI + uvicorn
 - **爬虫**：Node.js + Playwright（浏览器自动化）+ cycletls（TLS 指纹绕过）
 - **AI 提取**：OpenAI 兼容 API（支持本地部署的 LLM）
+- **AI代码生成** Hermes agent + 自定义skill
 - **数据库**：MySQL 8.0（aiomysql 异步连接池）
 - **前端**：原生 HTML/JS 单页应用
 
@@ -46,17 +47,43 @@
    - Linux: `sudo apt install docker.io`
 
 2. **准备 MySQL 数据库**
-   - 可以在宿主机安装 MySQL 8.0+
-   - 或使用云数据库（阿里云 RDS、腾讯云 MySQL 等）
-   - **只需建库，表会自动创建**
+   仅支持 MySQL 5.7.8+，推荐 MySQL 8.0+
 
-   ```sql
-   -- 登录 MySQL 后执行
-   CREATE DATABASE ai_yuangong CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-   CREATE USER 'app_user'@'%' IDENTIFIED BY 'your_password';
-   GRANT ALL PRIVILEGES ON ai_yuangong.* TO 'app_user'@'%';
-   FLUSH PRIVILEGES;
+3. **配置 Hermes skill**（如需爬虫自动生成功能）
+   
+   项目包含两个 skill 管理脚本，用途不同：
+   
+   **`setup_hermes.sh`** - 本地 skill 安装
+   - 功能：将项目的 `.hermes/skills/` 复制到 `~/.hermes/skills/`
+   - 使用场景：本机部署前，让 Hermes 能识别自定义 skills（爬虫生成等）
+   - 命令：`bash setup_hermes.sh`
+   
+   **`sync_hermes_to_server.sh`** - 远程环境同步
+   - 功能：将本地完整的 Hermes 环境（skills、sessions、memory、config）同步到远程服务器
+   - 使用场景：将本地开发环境迁移到服务器
+   - 命令：`bash sync_hermes_to_server.sh user@server`
+   
+   **典型流程：**
+   ```bash
+   # 1. 本地开发时同步到服务器
+   bash sync_hermes_to_server.sh
+   
+   # 2. SSH 到服务器后安装 skills
+   ssh user@server
+   cd /path/to/ai_yuangong
+   bash setup_hermes.sh
    ```
+
+4. **平台支持**
+   - ✅ macOS：完全支持
+   - ✅ Linux：完全支持
+   - ❌ Windows：不原生支持（WSL2 环境下可能可用，但未测试）
+
+5. **虚拟显示器（Xvfb）**
+   - Docker 镜像已内置 Xvfb，容器启动时自动启用
+   - 源码部署时需手动安装：`sudo apt install xvfb`
+   - 启动命令使用 `xvfb-run --auto-servernum python server.py`
+   - 作用：让 Chrome 浏览器在无 GUI 环境下以有头模式运行，保持反爬虫能力
 
 #### 快速启动
 
@@ -191,7 +218,7 @@ DB_NAME=ai_yuangong
 
 ```bash
 # 方式 A：直接运行
-python server.py
+xvfb-run --auto-servernum python server.py
 
 # 方式 B：开发模式（热重载）
 uvicorn server:app --reload --port 8000
