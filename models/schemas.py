@@ -95,6 +95,7 @@ class SiteCreate(BaseModel):
     description: Optional[str] = Field(default=None, max_length=100)
     aliases: Optional[List[str]] = Field(default=None, description="搜索别名列表，用于模糊搜索（如官方名/简称）")
     reference_urls: Optional[list[str]] = None
+    has_attachment: Optional[bool] = Field(default=False, description="该网站是否包含附件（标书在附件中）")
 
 
 class SiteUpdate(BaseModel):

@@ -78,7 +78,7 @@ async def add_site(site: SiteCreate, _=Depends(verify_admin_token)):
 
     async def generate_then_register():
         try:
-            await run_hermes_generate(task_id, site.url, scraper_name, site.reference_urls)
+            await run_hermes_generate(task_id, site.url, scraper_name, site.reference_urls, site.has_attachment)
             task = generate_tasks.get(task_id)
             if task and task.get('status') == 'success':
                 # 爬虫生成成功后才注册站点到数据库
