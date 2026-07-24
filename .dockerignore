@@ -1,0 +1,49 @@
+# 不打包进镜像
+.env
+.env.*
+!.env.example
+
+# 缓存和临时文件
+__pycache__/
+*.py[cod]
+*.pyo
+node_modules/
+.venv/
+venv/
+venv-*/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 数据（运行时生成，不打包）
+raw_data/
+processed_data/
+extracted_data/
+logs/
+*.log
+tmp/
+temp/
+
+# Git
+.git/
+.gitignore
+
+# Hermes（不需要）
+.hermes/
+
+# 取消信号
+.cancel_*
+
+# Docker 自身
+docker-compose.yml
+.dockerignore
+
+# 其他
+.qoder
+*.tmp
