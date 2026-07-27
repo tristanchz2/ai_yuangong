@@ -23,6 +23,9 @@ def load_env():
                 line = line.strip()
                 if line and not line.startswith('#') and '=' in line:
                     key, val = line.split('=', 1)
+                    # 去除行内注释（空格 + # 开头的部分）
+                    if ' #' in val:
+                        val = val[:val.index(' #')]
                     os.environ.setdefault(key.strip(), val.strip())
 
 
