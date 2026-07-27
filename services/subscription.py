@@ -13,7 +13,7 @@ async def ensure_subscription_table(keyword_id: int):
                 CREATE TABLE IF NOT EXISTS `{table_name}` (
                     bid_id BIGINT NOT NULL
                 )
-                UNIQUE KEY(bid_id)
+                DUPLICATE KEY(bid_id)
                 DISTRIBUTED BY HASH(bid_id) BUCKETS 1
                 PROPERTIES ("replication_num" = "1")
             """)

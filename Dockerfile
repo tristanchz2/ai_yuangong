@@ -1,4 +1,5 @@
-FROM hub-kdjr.kingdee.com/base_images/python:3.12.10-slim-bullseye
+# 尝试从 DaoCloud 镜像拉取 bookworm（GLIBC 2.36，支持 cycletls）
+FROM docker.m.daocloud.io/library/python:3.12-slim-bookworm
 
 # Single-container deployment:
 # FastAPI backend + Playwright scrapers (headless Chromium via Xvfb).
@@ -12,6 +13,7 @@ WORKDIR /app
 
 # Xvfb provides a virtual display so Chromium headed mode works without GUI.
 # Playwright runtime libs and fonts keep pages rendering correctly in container.
+# 额外的 Chrome 依赖库用于 scrape_hfbank.js 和 scrape_cebbank.js
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         curl \
@@ -34,11 +36,23 @@ RUN apt-get update \
         libatspi2.0-0 \
         libwayland-client0 \
         fonts-liberation \
+        libxss1 \
+        libx11-xcb1 \
+        libxcb-dri3-0 \
+        libdrm2 \
     && rm -rf /var/lib/apt/lists/*
 
 # Node.js 20.x is required by Playwright scrapers.
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装 cycletls 需要的系统依赖 + 编译工具（用于 postinstall 脚本）
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libssl3 \
+        ca-certificates \
+        build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy dependency manifests first to leverage Docker layer caching.
@@ -52,9 +66,15 @@ RUN npm ci --only=production 2>/dev/null || npm install --only=production
 RUN npx playwright install chromium \
     && npx playwright install-deps chromium
 
+# 创建符号链接，让爬虫代码能找到 Playwright 的 Chromium
+RUN ln -sf /ms-playwright/chromium-1228/chrome-linux64/chrome /usr/bin/google-chrome
+
 COPY . /app
 
-RUN mkdir -p /app/raw_data /app/logs \
+# 重新安装 npm 依赖，确保原生模块为 Linux 平台编译
+RUN npm install \
+    && node -e "try { require('cycletls'); console.log('✓ cycletls 加载成功'); } catch(e) { console.error('✗ cycletls 加载失败:', e.message); process.exit(1); }" \
+    && mkdir -p /app/raw_data /app/logs \
     && chmod -R 777 /app/raw_data /app/logs
 
 EXPOSE 8080

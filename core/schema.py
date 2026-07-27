@@ -32,7 +32,7 @@ async def ensure_tables():
                     hidden TINYINT DEFAULT '0',
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
-                UNIQUE KEY(id)
+                DUPLICATE KEY(id)
                 DISTRIBUTED BY HASH(id) BUCKETS 1
                 PROPERTIES ("replication_num" = "1")
             """)
@@ -44,7 +44,7 @@ async def ensure_tables():
                     word VARCHAR(200) NOT NULL,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
-                UNIQUE KEY(id)
+                DUPLICATE KEY(id)
                 DISTRIBUTED BY HASH(id) BUCKETS 1
                 PROPERTIES ("replication_num" = "1")
             """)
@@ -56,7 +56,7 @@ async def ensure_tables():
                     name VARCHAR(100) NOT NULL,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
-                UNIQUE KEY(id)
+                DUPLICATE KEY(id)
                 DISTRIBUTED BY HASH(id) BUCKETS 1
                 PROPERTIES ("replication_num" = "1")
             """)

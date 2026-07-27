@@ -42,7 +42,13 @@ async def insert_bid(bid_data: dict) -> int:
                 bid_data.get("remarks"),
                 bid_data.get("winners_json"),  # JSON 字符串
             ))
-            return cur.lastrowid
+            new_id = cur.lastrowid
+            if new_id is None:
+                # Doris 可能不返回 lastrowid，回退查询
+                await cur.execute("SELECT MAX(id) FROM bids")
+                row = await cur.fetchone()
+                new_id = row[0] if row else None
+            return new_id
 
 
 async def get_site_id_by_scraper_name(scraper_name: str):
@@ -77,30 +83,18 @@ async def get_site_id_to_name_map() -> dict:
 
 async def delete_bids_by_source_date(site_id: int, data_date: str) -> int:
     """
-    通过爬取索引表级联删除指定站点 + 日期的标书数据。
-    流程：读索引表 bid_id → 删除订阅词子表 → 删除省份索引表 → 删除 bids 主表 → 清空索引表。
+    直接从 bids 表中删除指定站点 + 日期的标书数据，并级联清理子表。
     返回删除的 bids 数量。
     """
-    from services.scrape_index import scrape_idx_table_name
-
     pool = await get_pool()
-    table_name = scrape_idx_table_name(site_id, data_date)
 
-    # 1. 检查索引表是否存在，不存在则无需删除
+    # 1. 先查出要删除的 bid_id（供子表清理用）
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                "SELECT COUNT(*) FROM information_schema.tables "
-                "WHERE table_schema = DATABASE() AND table_name = %s",
-                (table_name,)
+                "SELECT id FROM bids WHERE site_id = %s AND publish_date = %s",
+                (site_id, data_date),
             )
-            if (await cur.fetchone())[0] == 0:
-                return 0
-
-    # 2. 从索引表读取所有 bid_id
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute(f"SELECT bid_id FROM `{table_name}`")
             rows = await cur.fetchall()
 
     if not rows:
@@ -109,7 +103,7 @@ async def delete_bids_by_source_date(site_id: int, data_date: str) -> int:
     bid_ids = [r[0] for r in rows]
     placeholders = ",".join(["%s"] * len(bid_ids))
 
-    # 3. 删除所有订阅词子表中的关联记录
+    # 2. 删除所有订阅词子表中的关联记录
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("SELECT id FROM keywords")
@@ -123,7 +117,7 @@ async def delete_bids_by_source_date(site_id: int, data_date: str) -> int:
                     tuple(bid_ids),
                 )
 
-    # 4. 删除所有省份索引表中的关联记录
+    # 3. 删除所有省份索引表中的关联记录
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("SELECT id FROM provinces")
@@ -137,17 +131,12 @@ async def delete_bids_by_source_date(site_id: int, data_date: str) -> int:
                     tuple(bid_ids),
                 )
 
-    # 5. 删除 bids 主表记录
+    # 4. 删除 bids 主表记录
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
                 f"DELETE FROM bids WHERE id IN ({placeholders})",
                 tuple(bid_ids),
             )
-
-    # 6. 清空索引表（保留表结构，下次爬取复用）
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute(f"TRUNCATE TABLE `{table_name}`")
 
     return len(bid_ids)

@@ -97,17 +97,40 @@ async def create_site(name: str, url: str, scraper_name: str, description: str =
                    VALUES (%s, %s, %s, %s, %s, 'active', 0)""",
                 (name, url, scraper_name, description, _dump_aliases(aliases))
             )
-            return cur.lastrowid
+            new_id = cur.lastrowid
+            if new_id is None:
+                # Doris 可能不返回 lastrowid，回退查询
+                await cur.execute("SELECT MAX(id) FROM sites")
+                row = await cur.fetchone()
+                new_id = row[0] if row else None
+            return new_id
 
 
 async def update_site(site_id: int, name: str, description: str = "", aliases: list | None = None):
-    """更新站点名称、描述和别名"""
+    """更新站点名称、描述和别名（Doris DUPLICATE KEY 不支持 UPDATE，用 DELETE+INSERT 替代）"""
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
+            # 先读取当前行数据
             await cur.execute(
-                "UPDATE sites SET name = %s, description = %s, aliases = %s WHERE id = %s",
-                (name, description, _dump_aliases(aliases), site_id)
+                "SELECT id, name, url, scraper_name, description, status, hidden, aliases FROM sites WHERE id = %s",
+                (site_id,)
+            )
+            row = await cur.fetchone()
+            if not row:
+                return
+            old = {
+                "url": row[2], "scraper_name": row[3], "status": row[5],
+                "hidden": row[6], "old_aliases": row[7],
+            }
+            # 删除旧行
+            await cur.execute("DELETE FROM sites WHERE id = %s", (site_id,))
+            # 插入新行（保留未变更字段）
+            await cur.execute(
+                """INSERT INTO sites (id, name, url, scraper_name, description, aliases, status, hidden)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                (site_id, name, old["url"], old["scraper_name"], description,
+                 _dump_aliases(aliases), old["status"], old["hidden"])
             )
 
 
@@ -120,11 +143,26 @@ async def delete_site(site_id: int):
 
 
 async def set_site_hidden(site_id: int, hidden: bool):
-    """设置站点隐藏/显示状态"""
+    """设置站点隐藏/显示状态（Doris DUPLICATE KEY 不支持 UPDATE，用 DELETE+INSERT 替代）"""
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
+            # 先读取当前行完整数据
             await cur.execute(
-                "UPDATE sites SET hidden = %s WHERE id = %s",
-                (1 if hidden else 0, site_id)
+                "SELECT id, name, url, scraper_name, description, status, hidden, aliases FROM sites WHERE id = %s",
+                (site_id,)
+            )
+            row = await cur.fetchone()
+            if not row:
+                return
+            new_hidden = 1 if hidden else 0
+            # 如果值没变，跳过
+            if row[6] == new_hidden:
+                return
+            # 删除旧行并插入新行
+            await cur.execute("DELETE FROM sites WHERE id = %s", (site_id,))
+            await cur.execute(
+                """INSERT INTO sites (id, name, url, scraper_name, description, aliases, status, hidden)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                (row[0], row[1], row[2], row[3], row[4], row[7], row[5], new_hidden)
             )

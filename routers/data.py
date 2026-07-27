@@ -1,7 +1,6 @@
 """数据展示路由 - 从数据库读取标书数据"""
 
 import json
-import re
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -54,36 +53,17 @@ async def get_categories():
 
 @router.get("/sources")
 async def get_sources():
-    """返回有数据的来源列表（从 scrape_idx 索引表提取 site_id，JOIN sites 取当前名称）
-    已删除的站点不会出现在列表中。"""
+    """返回有数据的来源列表（直接从 bids 表查 DISTINCT site_id，JOIN sites 取当前名称）"""
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            # 从 information_schema 中找到所有 scrape_idx_site{N}_{date} 表
-            await cur.execute(
-                "SELECT table_name FROM information_schema.tables "
-                "WHERE table_schema = DATABASE() AND table_name LIKE 'scrape_idx_site%%'"
-            )
-            rows = await cur.fetchall()
-
-    # 从表名中提取 site_id（去重）
-    site_ids = set()
-    for (table_name,) in rows:
-        m = re.match(r"scrape_idx_site(\d+)_\d{8}$", table_name)
-        if m:
-            site_ids.add(int(m.group(1)))
-
-    if not site_ids:
-        return {"sources": []}
-
-    # JOIN sites 表取当前名称，已删除的站点自然被排除
-    placeholders = ",".join(["%s"] * len(site_ids))
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute(
-                f"SELECT id, name, description, aliases FROM sites WHERE id IN ({placeholders}) ORDER BY id",
-                tuple(site_ids),
-            )
+            await cur.execute("""
+                SELECT DISTINCT s.id, s.name, s.description, s.aliases
+                FROM bids b
+                JOIN sites s ON b.site_id = s.id
+                WHERE b.site_id IS NOT NULL
+                ORDER BY s.id
+            """)
             rows = await cur.fetchall()
 
     return {"sources": [{"id": r[0], "name": r[1], "description": r[2] or "", "aliases": _parse_aliases(r[3])} for r in rows]}

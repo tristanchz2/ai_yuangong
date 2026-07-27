@@ -34,7 +34,6 @@ from core.utils import parse_date_str
 from services.region import parse_service_region
 from services.subscription import get_all_subscription_keywords, ensure_subscription_table, insert_bid_subscription
 from services.province_index import get_all_provinces, insert_bid_province
-from services.scrape_index import ensure_scrape_idx_table, insert_scrape_idx
 from services.bid_repo import (
     insert_bid, get_scraper_to_site_id_map, get_site_id_to_name_map, delete_bids_by_source_date
 )
@@ -184,7 +183,7 @@ async def async_main():
     db_saved = 0
     if all_results and not is_cancelled():
         print(f"\n💾 开始写入数据库...")
-        # 确保爬取索引表存在
+        # ★ 入库前清理旧数据（直接从 bids 表按 site_id + publish_date 删除）
         yesterday = get_yesterday_str()
         ensured_site_ids: set = set()
         for r in all_results:
@@ -192,10 +191,8 @@ async def async_main():
             sid = site_name_to_id.get(src_name)
             if sid is None:
                 sid = scraper_to_site_id.get(source_to_scraper.get(src_name, ""))
-            if sid and sid not in ensured_site_ids:
-                await ensure_scrape_idx_table(sid, yesterday)
+            if sid:
                 ensured_site_ids.add(sid)
-        # ★ 入库前清理旧数据
         for sid in ensured_site_ids:
             try:
                 deleted = await delete_bids_by_source_date(sid, yesterday)
@@ -251,8 +248,6 @@ async def async_main():
                     "winners_json": winners_json,
                 }
                 bid_id = await insert_bid(bid_data)
-                if site_id:
-                    await insert_scrape_idx(site_id, yesterday, bid_id)
                 if service_province and service_province in province_name_to_id:
                     await insert_bid_province(bid_id, province_name_to_id[service_province])
                 if sub_matches and isinstance(sub_matches, dict):

@@ -28,12 +28,6 @@ from services.province_index import (
     insert_bid_province,
 )
 
-# 爬取索引
-from services.scrape_index import (
-    ensure_scrape_idx_table,
-    insert_scrape_idx,
-)
-
 # 标书 CRUD
 from services.bid_repo import (
     insert_bid,

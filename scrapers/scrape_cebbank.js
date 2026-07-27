@@ -164,6 +164,10 @@ async function scrape(options = {}) {
     `--user-data-dir=${userDataDir}`,
     '--no-first-run',
     '--no-default-browser-check',
+    '--no-sandbox',  // Docker 环境必需
+    '--disable-dev-shm-usage',  // 避免 /dev/shm 空间不足
+    '--disable-gpu',
+    '--remote-debugging-address=127.0.0.1',  // 显式绑定 IPv4
   ], {
     stdio: 'ignore',
     detached: true,

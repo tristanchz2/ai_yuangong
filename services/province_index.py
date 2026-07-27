@@ -17,7 +17,7 @@ async def ensure_all_province_tables():
                     CREATE TABLE IF NOT EXISTS `province_{province_id}` (
                         bid_id BIGINT NOT NULL
                     )
-                    UNIQUE KEY(bid_id)
+                    DUPLICATE KEY(bid_id)
                     DISTRIBUTED BY HASH(bid_id) BUCKETS 1
                     PROPERTIES ("replication_num" = "1")
                 """)
