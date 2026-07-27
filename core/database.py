@@ -24,8 +24,14 @@ async def init_db():
         autocommit=True,
         minsize=2,
         maxsize=10,
-        init_command="SET time_zone = '+08:00'",
     )
+    # 尝试设置时区（Doris 可能不支持，忽略失败）
+    try:
+        async with _pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SET time_zone = '+08:00'")
+    except Exception:
+        pass
 
 
 async def get_pool() -> aiomysql.Pool:

@@ -1,4 +1,4 @@
-"""爬取索引表管理（source+date 独立索引）"""
+"""爬取索引表管理（适配 Doris 3.x，source+date 独立索引）"""
 
 from core.database import get_pool
 
@@ -15,23 +15,23 @@ async def ensure_scrape_idx_table(site_id: int, data_date: str):
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            await cur.execute("SET sql_notes = 0")
             await cur.execute(f"""
                 CREATE TABLE IF NOT EXISTS `{table_name}` (
-                    bid_id BIGINT NOT NULL,
-                    PRIMARY KEY (bid_id)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    bid_id BIGINT NOT NULL
+                )
+                UNIQUE KEY(bid_id)
+                DISTRIBUTED BY HASH(bid_id) BUCKETS 1
+                PROPERTIES ("replication_num" = "1")
             """)
-            await cur.execute("SET sql_notes = 1")
 
 
 async def insert_scrape_idx(site_id: int, data_date: str, bid_id: int):
-    """将 bid_id 写入对应的爬取索引表"""
+    """将 bid_id 写入对应的爬取索引表（UNIQUE KEY 自动去重）"""
     table_name = scrape_idx_table_name(site_id, data_date)
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                f"INSERT IGNORE INTO `{table_name}` (bid_id) VALUES (%s)",
+                f"INSERT INTO `{table_name}` (bid_id) VALUES (%s)",
                 (bid_id,)
             )

@@ -1,4 +1,4 @@
-"""订阅词子表管理"""
+"""订阅词子表管理（适配 Doris 3.x）"""
 
 from core.database import get_pool
 
@@ -9,14 +9,14 @@ async def ensure_subscription_table(keyword_id: int):
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            await cur.execute("SET sql_notes = 0")
             await cur.execute(f"""
                 CREATE TABLE IF NOT EXISTS `{table_name}` (
-                    bid_id BIGINT NOT NULL,
-                    PRIMARY KEY (bid_id)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    bid_id BIGINT NOT NULL
+                )
+                UNIQUE KEY(bid_id)
+                DISTRIBUTED BY HASH(bid_id) BUCKETS 1
+                PROPERTIES ("replication_num" = "1")
             """)
-            await cur.execute("SET sql_notes = 1")
 
 
 async def drop_subscription_table(keyword_id: int):
@@ -50,12 +50,12 @@ async def get_all_subscription_keywords() -> list:
 
 
 async def insert_bid_subscription(bid_id: int, keyword_id: int):
-    """将标书 ID 插入到对应订阅词的子表中"""
+    """将标书 ID 插入到对应订阅词的子表中（UNIQUE KEY 自动去重）"""
     table_name = f"sub_{keyword_id}"
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                f"INSERT IGNORE INTO `{table_name}` (bid_id) VALUES (%s)",
+                f"INSERT INTO `{table_name}` (bid_id) VALUES (%s)",
                 (bid_id,)
             )
