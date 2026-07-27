@@ -16,6 +16,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         curl \
         xvfb \
+        xauth \
         libnss3 \
         libnspr4 \
         libatk1.0-0 \
