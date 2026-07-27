@@ -14,9 +14,9 @@ async def insert_bid(bid_data: dict) -> int:
                     publish_time, publish_date, bid_time, bid_date,
                     summary, keywords, budget,
                     purchaser, purchaser_region, service_category,
-                    service_province, service_city, service_location, remarks
+                    service_province, service_city, service_location, remarks, winners
                 ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 )
             """, (
                 bid_data.get("site_id"),
@@ -40,6 +40,7 @@ async def insert_bid(bid_data: dict) -> int:
                 bid_data.get("service_city"),
                 bid_data.get("service_location"),
                 bid_data.get("remarks"),
+                bid_data.get("winners_json"),  # JSON 字符串
             ))
             return cur.lastrowid
 

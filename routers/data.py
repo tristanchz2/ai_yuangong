@@ -312,7 +312,7 @@ async def get_category_data(
                        bids.publish_time, bids.bid_time, bids.summary, bids.keywords, bids.budget,
                        bids.purchaser, bids.purchaser_region, bids.service_category,
                        bids.service_province, bids.service_city, bids.service_location,
-                       bids.remarks, bids.created_at, bids.site_id
+                       bids.remarks, bids.created_at, bids.site_id, bids.winners
                 {join_clause}
                 WHERE bids.notice_type = %s{all_filters}
                 ORDER BY bids.created_at DESC
@@ -334,6 +334,15 @@ async def get_category_data(
                 kw_list = []
         else:
             kw_list = []
+        # winners 字段是 JSON 字符串，解析为列表
+        winners_raw = row[21]
+        if winners_raw:
+            try:
+                winners_list = json.loads(winners_raw) if isinstance(winners_raw, str) else winners_raw
+            except (json.JSONDecodeError, TypeError):
+                winners_list = []
+        else:
+            winners_list = []
 
         records.append({
             "id": row[0],
@@ -356,6 +365,7 @@ async def get_category_data(
             "service_location": row[17],
             "remarks": row[18],
             "site_id": row[20],
+            "winners": winners_list,
             "matched_keywords": matched_map.get(row[0], []),
         })
 

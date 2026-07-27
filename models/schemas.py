@@ -73,6 +73,15 @@ class ExtractedFields(BaseModel):
         default=None,
         description="备注信息，包括联系人及联系方式、项目编号等需要备注的内容。没有则留空"
     )
+    winners: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "中标/成交供应商名称列表。仅当 notice_type=1 时填写，"
+            "notice_type=0或2时必须为null。"
+            "只填公告中明确标注为'中标人/中标供应商/成交供应商'的单位名称，"
+            "不要填采购人、代理机构、评审专家等非中标方"
+        )
+    )
 
 
 # ──────────────────────────────────────────────

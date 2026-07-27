@@ -72,6 +72,7 @@ async def ensure_tables():
                     service_city VARCHAR(50) DEFAULT NULL,
                     service_location VARCHAR(500) DEFAULT NULL,
                     remarks TEXT DEFAULT NULL,
+                    winners JSON DEFAULT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     INDEX idx_source (source),
                     INDEX idx_notice_type (notice_type),
@@ -129,6 +130,15 @@ async def ensure_tables():
             await cur.execute("SHOW INDEX FROM bids WHERE Key_name = 'idx_budget'")
             if not await cur.fetchone():
                 await cur.execute("ALTER TABLE bids ADD INDEX idx_budget (budget)")
+
+    # 兼容旧库：若 bids 表缺少 winners 列（中标供应商 JSON 数组），自动补加
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("SHOW COLUMNS FROM bids LIKE 'winners'")
+            if not await cur.fetchone():
+                await cur.execute(
+                    "ALTER TABLE bids ADD COLUMN winners JSON DEFAULT NULL AFTER remarks"
+                )
 
     # 确保所有订阅词对应的子表存在
     from services.subscription import ensure_all_subscription_tables

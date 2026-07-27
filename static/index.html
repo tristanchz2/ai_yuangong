@@ -419,7 +419,9 @@ function renderCards() {
     const keywords = (r.keywords || []).map(k => `<span class="kw">${esc(k)}</span>`).join('');
     const bulb = (r.matched_keywords && r.matched_keywords.length)
       ? `<span class="bulb-wrap"><span class="bulb">💡</span><span class="bulb-tip">订阅词：${r.matched_keywords.map(esc).join('、')}</span></span>` : '';
-    return `<div class="card" onclick="showDetail(${i})"><div class="card-title">${bulb}${esc(r.title||'无标题')}</div><div class="tags"><span class="tag source">${esc(r.source||'')}</span><span class="tag region">${esc(r.purchaser_region||'')}</span></div><div class="card-row"><div><span class="label">发布时间：</span><span class="value">${esc(r.publish_time||'-')}</span></div><div><span class="label">招标时间：</span><span class="value">${esc(r.bid_time||'-')}</span></div><div><span class="label">采购人：</span><span class="value">${esc(r.purchaser||'-')}</span></div><div><span class="label">预算：</span><span class="value budget">${budgetStr}</span></div><div><span class="label">服务类别：</span><span class="value">${esc(r.service_category||'-')}</span></div><div><span class="label">服务地点：</span><span class="value">${esc(r.service_location||'-')}</span></div></div><div class="summary">${esc(r.summary||'')}</div><div class="keywords">${keywords}</div></div>`;
+    const winnersRow = (currentCategory === '结果公告' && r.winners && r.winners.length)
+      ? `<div><span class="label">中标人：</span><span class="value" style="color:#16a34a;font-weight:500">${r.winners.map(esc).join('、')}</span></div>` : '';
+    return `<div class="card" onclick="showDetail(${i})"><div class="card-title">${bulb}${esc(r.title||'无标题')}</div><div class="tags"><span class="tag source">${esc(r.source||'')}</span><span class="tag region">${esc(r.purchaser_region||'')}</span></div><div class="card-row"><div><span class="label">发布时间：</span><span class="value">${esc(r.publish_time||'-')}</span></div><div><span class="label">招标时间：</span><span class="value">${esc(r.bid_time||'-')}</span></div><div><span class="label">采购人：</span><span class="value">${esc(r.purchaser||'-')}</span></div><div><span class="label">预算：</span><span class="value budget">${budgetStr}</span></div><div><span class="label">服务类别：</span><span class="value">${esc(r.service_category||'-')}</span></div><div><span class="label">服务地点：</span><span class="value">${esc(r.service_location||'-')}</span></div>${winnersRow}</div><div class="summary">${esc(r.summary||'')}</div><div class="keywords">${keywords}</div></div>`;
   }).join('');
   const pag = document.getElementById('pagination');
   pag.style.display = totalPages > 1 ? 'flex' : 'none';
@@ -612,12 +614,15 @@ function showDetail(index) {
   document.getElementById('dataPage').classList.add('hidden');
   document.getElementById('detailPage').classList.remove('hidden');
   document.getElementById('detailTitle').textContent = r.title || '无标题';
+  const winnersMeta = (r.winners && r.winners.length)
+    ? `<div class="meta-row"><span class="meta-label">中标人：</span><span class="meta-value" style="color:#16a34a">${r.winners.map(esc).join('、')}</span></div>` : '';
   document.getElementById('detailMeta').innerHTML = `
     <div class="meta-row"><span class="meta-label">发布时间：</span><span class="meta-value">${esc(r.publish_time||'-')}</span></div>
     <div class="meta-row"><span class="meta-label">截止时间：</span><span class="meta-value">${esc(r.bid_time||'-')}</span></div>
     <div class="meta-row"><span class="meta-label">服务地点：</span><span class="meta-value">${esc(r.service_location||'-')}</span></div>
     <div class="meta-row"><span class="meta-label">预算：</span><span class="meta-value budget">${r.budget ? '¥'+Number(r.budget).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2}) : '-'}</span></div>
     <div class="meta-row"><span class="meta-label">来源：</span><span class="meta-value">${esc(r.source||'-')}</span></div>
+    ${winnersMeta}
     ${r.url ? `<a href="${esc(r.url)}" target="_blank" class="meta-link">🔗 原文链接</a>` : ''}`;
   document.getElementById('detailContent').textContent = r.content || '暂无正文内容';
   window.scrollTo({top:0,behavior:'smooth'});

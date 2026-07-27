@@ -215,6 +215,12 @@ async def async_main():
                 sub_matches = r.pop("subscription_matches", None) or {}
                 keywords_list = r.get("keywords") or []
                 keywords_json = json.dumps(keywords_list, ensure_ascii=False) if keywords_list else None
+                winners_list = r.get("winners")
+                winners_json = (
+                    json.dumps(winners_list, ensure_ascii=False)
+                    if isinstance(winners_list, list) and winners_list
+                    else None
+                )
                 service_province, service_city = parse_service_region(r.get("service_region"))
                 src_name = r.get("source", "")
                 site_id = site_name_to_id.get(src_name)
@@ -242,6 +248,7 @@ async def async_main():
                     "service_city": service_city,
                     "service_location": r.get("service_location"),
                     "remarks": r.get("remarks"),
+                    "winners_json": winners_json,
                 }
                 bid_id = await insert_bid(bid_data)
                 if site_id:

@@ -136,6 +136,9 @@ async def extract_batch(
             "②新闻、制度、通知、供应商征集等非具体招标采购项目的文档"
             "\n  ★ 注意：变更/更正/延期/澄清 → 0（采购公告）；废标/终止/流标/失败/撤销 → 2（其他）"
             "\n  如果 notice_type=2，其余字段可填 null，无需强行提取。"
+            "\n  ★ winners 字段规则：仅 notice_type=1 时提取中标/成交供应商名称列表，"
+            "notice_type=0或2时一律填 null。只填明确标注为中标人/中标供应商/成交供应商的单位，"
+            "采购人、代理机构不是中标人。"
         ),
         f"\n需要提取的字段及说明：\n{schema_desc}",
         sub_prompt_section,
@@ -282,6 +285,9 @@ async def process_file(
             extracted["notice_type"] = llm_notice
         else:
             extracted["notice_type"] = infer_notice_type(extracted.get("title", ""))
+        # 代码兜底：非结果公告无条件清空 winners，防止 LLM 误填
+        if extracted.get("notice_type") != "结果公告":
+            extracted.pop("winners", None)
         # 从 raw_data 平移 url 和 content
         url = row.get("url") or row.get("sourceUrl") or None
         content_raw = row.get("content", "")
