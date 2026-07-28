@@ -291,8 +291,12 @@ async function main() {
 
       const params = {};
       if (mode === 'date' && targetDate) {
-        params.startDate = targetDate;
-        params.endDate = targetDate;
+        // 浦发 API 的日期范围是开区间 (exclusive)，需要前推/后推一天
+        const d = new Date(targetDate + 'T00:00:00');
+        const prev = new Date(d); prev.setDate(prev.getDate() - 1);
+        const next = new Date(d); next.setDate(next.getDate() + 1);
+        params.startDate = formatDate(prev);
+        params.endDate = formatDate(next);
       }
 
       const result = await fetchNoticeList(page, pageSize, params);
