@@ -85,6 +85,9 @@ class BatchScraperTask:
         self._running_processes: List[asyncio.subprocess.Process] = []
         # 取消信号文件：传给 extract_fields.py 子进程
         self._cancel_file = PROJECT_ROOT / f".cancel_{task_id}"
+        # 关键词快照：任务启动时锁定，中途修改不影响当前任务
+        self._keywords_snapshot: Optional[List[tuple]] = None  # [(id, word), ...]
+        self._keywords_file: Optional[Path] = None
 
     def add_log(self, msg: str):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -183,6 +186,25 @@ async def run_batch_scrape(task: BatchScraperTask, sites: List[Dict]):
     task.status = "running"
     task.started_at = time.time()
 
+    # ★ 任务启动时锁定关键词快照，写入临时文件供子进程使用
+    try:
+        from core.database import init_db, close_db
+        from services.subscription import get_all_subscription_keywords
+        await init_db()
+        keywords = await get_all_subscription_keywords()  # [(id, word), ...]
+        task._keywords_snapshot = keywords
+        if keywords:
+            keywords_file = PROJECT_ROOT / f".keywords_{task.task_id}.json"
+            with open(keywords_file, "w", encoding="utf-8") as f:
+                json.dump(keywords, f, ensure_ascii=False)
+            task._keywords_file = keywords_file
+            task.add_log(f"📌 已锁定 {len(keywords)} 个订阅词: {', '.join(w for _, w in keywords)}")
+        else:
+            task.add_log("📌 当前无订阅词")
+        await close_db()
+    except Exception as e:
+        task.add_log(f"⚠️ 锁定订阅词失败: {e}")
+
     scraper_sem = asyncio.Semaphore(MAX_SCRAPER_CONCURRENCY)
     llm_sem = asyncio.Semaphore(MAX_LLM_CONCURRENCY)
 
@@ -219,10 +241,15 @@ async def run_batch_scrape(task: BatchScraperTask, sites: List[Dict]):
             pass
     task._running_processes.clear()
 
-    # 清理取消信号文件
+    # 清理取消信号文件和关键词快照文件
     try:
         if task._cancel_file.exists():
             task._cancel_file.unlink()
+    except Exception:
+        pass
+    try:
+        if task._keywords_file and task._keywords_file.exists():
+            task._keywords_file.unlink()
     except Exception:
         pass
 
@@ -447,6 +474,9 @@ async def _run_field_extraction(task: BatchScraperTask, st: SiteTask) -> bool:
         "--concurrency", str(MAX_LLM_CONCURRENCY),
         "--cancel-file", str(task._cancel_file),
     ]
+    # ★ 传递锁定的关键词快照文件给子进程
+    if task._keywords_file and task._keywords_file.exists():
+        cmd.extend(["--keywords-file", str(task._keywords_file)])
 
     try:
         process = await asyncio.create_subprocess_exec(

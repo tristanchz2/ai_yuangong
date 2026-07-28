@@ -21,6 +21,17 @@ router = APIRouter(prefix="/api/admin", tags=["管理员"])
 admin_tokens: dict = {}
 
 
+def _check_no_running_task():
+    """检查是否有运行中的批量爬取任务，有则抛出异常"""
+    from services.batch_task import batch_tasks
+    for task in batch_tasks.values():
+        if task.status == "running":
+            raise HTTPException(
+                status_code=400,
+                detail="有爬虫任务正在运行，请等待任务完成后再操作订阅词"
+            )
+
+
 def is_debug_mode() -> bool:
     return os.environ.get("APP_MODE", "release").lower() == "debug"
 
@@ -172,6 +183,7 @@ async def list_keywords(_=Depends(verify_admin_token)):
 
 @router.post("/keywords")
 async def add_keyword(req: KeywordCreate, _=Depends(verify_admin_token)):
+    _check_no_running_task()
     word = req.word.strip()
     if not word:
         raise HTTPException(status_code=400, detail="订阅词不能为空")
@@ -198,6 +210,7 @@ async def add_keyword(req: KeywordCreate, _=Depends(verify_admin_token)):
 
 @router.delete("/keywords/{keyword_id}")
 async def delete_keyword(keyword_id: int, _=Depends(verify_admin_token)):
+    _check_no_running_task()
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:

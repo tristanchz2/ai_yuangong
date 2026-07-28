@@ -83,17 +83,39 @@ async def async_main():
         default=None,
         help="取消信号文件路径。如果该文件存在，则跳过写入。",
     )
+    parser.add_argument(
+        "--keywords-file",
+        type=str,
+        default=None,
+        help="关键词快照文件路径（JSON 格式）。如果指定，则从文件读取订阅词，否则从数据库实时读取。",
+    )
     args = parser.parse_args()
 
     # ★ 设置全局取消信号文件路径，供 is_cancelled() 检查
     if args.cancel_file:
         set_cancel_file(Path(args.cancel_file))
 
-    # ★ 初始化数据库连接，获取订阅词列表
+    # ★ 初始化数据库连接
     await init_db()
-    subscription_keywords = await get_all_subscription_keywords()  # [(id, word), ...]
+    
+    # ★ 获取订阅词列表：优先从锁定的快照文件读取，否则从数据库实时读取
+    if args.keywords_file:
+        keywords_path = Path(args.keywords_file)
+        if keywords_path.exists():
+            with open(keywords_path, "r", encoding="utf-8") as f:
+                subscription_keywords = json.load(f)
+            # 转换为 tuple 列表
+            subscription_keywords = [(item[0], item[1]) for item in subscription_keywords]
+            print(f"📌 使用锁定的订阅词快照({len(subscription_keywords)}个): {', '.join(w for _, w in subscription_keywords)}")
+        else:
+            print(f"⚠️ 关键词快照文件不存在: {args.keywords_file}，回退到数据库读取")
+            subscription_keywords = await get_all_subscription_keywords()
+    else:
+        subscription_keywords = await get_all_subscription_keywords()  # [(id, word), ...]
+    
     if subscription_keywords:
-        print(f"📌 当前订阅词({len(subscription_keywords)}个): {', '.join(w for _, w in subscription_keywords)}")
+        if not args.keywords_file:
+            print(f"📌 当前订阅词({len(subscription_keywords)}个): {', '.join(w for _, w in subscription_keywords)}")
         # 确保所有订阅词子表存在
         for kid, _ in subscription_keywords:
             await ensure_subscription_table(kid)
