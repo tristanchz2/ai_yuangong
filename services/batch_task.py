@@ -187,10 +187,9 @@ async def run_batch_scrape(task: BatchScraperTask, sites: List[Dict]):
     task.started_at = time.time()
 
     # ★ 任务启动时锁定关键词快照，写入临时文件供子进程使用
+    # 注意：不能调用 close_db()，否则会销毁主服务的连接池
     try:
-        from core.database import init_db, close_db
         from services.subscription import get_all_subscription_keywords
-        await init_db()
         keywords = await get_all_subscription_keywords()  # [(id, word), ...]
         task._keywords_snapshot = keywords
         if keywords:
@@ -201,7 +200,6 @@ async def run_batch_scrape(task: BatchScraperTask, sites: List[Dict]):
             task.add_log(f"📌 已锁定 {len(keywords)} 个订阅词: {', '.join(w for _, w in keywords)}")
         else:
             task.add_log("📌 当前无订阅词")
-        await close_db()
     except Exception as e:
         task.add_log(f"⚠️ 锁定订阅词失败: {e}")
 

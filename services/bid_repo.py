@@ -1,54 +1,67 @@
 """标书主表 CRUD 操作"""
 
+import asyncio
+
 from core.database import get_pool
+
+# 预生成 ID 的互斥锁，防止并发下 MAX(id)+1 冲突
+_id_lock = asyncio.Lock()
 
 
 async def insert_bid(bid_data: dict) -> int:
-    """插入一条标书到 bids 表，返回 bid_id"""
+    """插入一条标书到 bids 表，返回 bid_id。
+    Doris DUPLICATE KEY 表下 aiomysql.lastrowid 不可靠，
+    改用预生成 ID（MAX(id)+1）+ 显式写入，asyncio.Lock 保证并发安全。
+    """
     pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute("""
-                INSERT INTO bids (
-                    site_id, source, scrape_time, url, content, title, notice_type,
-                    publish_time, publish_date, bid_time, bid_date,
-                    summary, keywords, budget,
-                    purchaser, purchaser_region, service_category,
-                    service_province, service_city, service_location, remarks, winners
-                ) VALUES (
-                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-                )
-            """, (
-                bid_data.get("site_id"),
-                bid_data.get("source"),
-                bid_data.get("scrape_time"),
-                bid_data.get("url"),
-                bid_data.get("content"),
-                bid_data.get("title"),
-                bid_data.get("notice_type"),
-                bid_data.get("publish_time"),
-                bid_data.get("publish_date"),
-                bid_data.get("bid_time"),
-                bid_data.get("bid_date"),
-                bid_data.get("summary"),
-                bid_data.get("keywords_json"),  # JSON 字符串
-                bid_data.get("budget"),
-                bid_data.get("purchaser"),
-                bid_data.get("purchaser_region"),
-                bid_data.get("service_category"),
-                bid_data.get("service_province"),
-                bid_data.get("service_city"),
-                bid_data.get("service_location"),
-                bid_data.get("remarks"),
-                bid_data.get("winners_json"),  # JSON 字符串
-            ))
-            new_id = cur.lastrowid
-            if new_id is None:
-                # Doris 可能不返回 lastrowid，回退查询
-                await cur.execute("SELECT MAX(id) FROM bids")
+    async with _id_lock:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                # 1. 预生成下一个 ID
+                await cur.execute("SELECT IFNULL(MAX(id), 0) + 1 FROM bids")
                 row = await cur.fetchone()
-                new_id = row[0] if row else None
-            return new_id
+                new_id = row[0] if row else 1
+
+                # 2. 显式写入 id
+                await cur.execute("""
+                    INSERT INTO bids (
+                        id,
+                        site_id, source, scrape_time, url, content, title, notice_type,
+                        publish_time, publish_date, bid_time, bid_date,
+                        summary, keywords, budget,
+                        purchaser, purchaser_region, service_category,
+                        service_province, service_city, service_location, remarks, winners
+                    ) VALUES (
+                        %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s
+                    )
+                """, (
+                    new_id,
+                    bid_data.get("site_id"),
+                    bid_data.get("source"),
+                    bid_data.get("scrape_time"),
+                    bid_data.get("url"),
+                    bid_data.get("content"),
+                    bid_data.get("title"),
+                    bid_data.get("notice_type"),
+                    bid_data.get("publish_time"),
+                    bid_data.get("publish_date"),
+                    bid_data.get("bid_time"),
+                    bid_data.get("bid_date"),
+                    bid_data.get("summary"),
+                    bid_data.get("keywords_json"),  # JSON 字符串
+                    bid_data.get("budget"),
+                    bid_data.get("purchaser"),
+                    bid_data.get("purchaser_region"),
+                    bid_data.get("service_category"),
+                    bid_data.get("service_province"),
+                    bid_data.get("service_city"),
+                    bid_data.get("service_location"),
+                    bid_data.get("remarks"),
+                    bid_data.get("winners_json"),  # JSON 字符串
+                ))
+                return new_id
 
 
 async def get_site_id_by_scraper_name(scraper_name: str):
