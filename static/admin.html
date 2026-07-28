@@ -37,16 +37,15 @@
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
   .panel { display: none; }
   .panel.active { display: block; }
-  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px; }
-  .toolbar h2 { font-size: 18px; color: #1e3a5f; }
-  .toolbar-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-  .toolbar-actions .btn { height: 38px; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 10px; }
+  .toolbar h2 { font-size: 18px; color: #1e3a5f; flex-shrink: 0; }
+  .toolbar-actions { display: flex; gap: 10px; flex-wrap: nowrap; align-items: center; }
+  .toolbar-actions .btn { height: 38px; white-space: nowrap; }
   .site-table { width: 100%; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.06); table-layout: fixed; }
   .site-table th { background: #f8fafc; padding: 12px 14px; text-align: left; font-size: 13px; color: #666; border-bottom: 1px solid #eee; }
   .site-table td { padding: 12px 14px; font-size: 14px; border-bottom: 1px solid #f0f0f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .site-table th:first-child, .site-table td:first-child { width: 52px; }
   .site-table th:nth-child(2), .site-table td:nth-child(2) { width: 200px; }
-  .site-table th:nth-child(3), .site-table td:nth-child(3) { }
   .site-table th:nth-child(4), .site-table td:nth-child(4) { width: 110px; }
   .site-table th:nth-child(5), .site-table td:nth-child(5) { width: 78px; padding-left: 8px; padding-right: 8px; }
   .site-table th:last-child, .site-table td:last-child { width: 164px; padding-left: 8px; padding-right: 8px; overflow-x: hidden; }
@@ -60,7 +59,7 @@
   .action-btns { display: flex; gap: 4px; flex-wrap: nowrap; justify-content: center; }
   .action-btns .btn { padding: 6px 10px; font-size: 12px; white-space: nowrap; }
   /* 搜索框（内联在工具栏第一行，右侧内嵌模式下拉，与按钮等高对齐） */
-  .toolbar-search { display: flex; align-items: stretch; flex: 0 1 300px; min-width: 200px; margin-left: auto; height: 38px; background: #fff; border: 1px solid #ddd; border-radius: 8px; transition: border-color .15s; overflow: hidden; }
+  .toolbar-search { display: flex; align-items: stretch; flex: 1 1 200px; min-width: 150px; max-width: 280px; height: 38px; background: #fff; border: 1px solid #ddd; border-radius: 8px; transition: border-color .15s; overflow: hidden; }
   .toolbar-search:focus-within { border-color: #1e3a5f; }
   .toolbar-search input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; padding: 0 12px; font-size: 14px; color: #333; }
   .toolbar-search select { flex-shrink: 0; border: none; outline: none; background: #f1f5f9; border-left: 1px solid #ddd; padding: 0 6px; font-size: 13px; color: #555; cursor: pointer; }
