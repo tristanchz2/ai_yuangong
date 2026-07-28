@@ -17,7 +17,7 @@ const path = require('path');
 const { stripHtml } = require('./utility/stripHtml');
 const { JsonWriter } = require('./utility/JsonWriter');
 
-const OUTPUT_JSON = path.join(__dirname, '..', 'raw_data', 'spdb_v2_data.json');
+const OUTPUT_JSON = path.join(__dirname, '..', 'raw_data', 'spdb_data.json');
 
 const BASE_URL = 'https://ebuy.spdb.com.cn';
 const APP_URL = `${BASE_URL}/app`;
@@ -258,10 +258,10 @@ async function main() {
 
   if (args.includes('--info')) {
     console.log(JSON.stringify({
-      name: 'spdb_v2',
+      name: 'spdb',
       description: '浦发银行采购供应商门户 (HTTP直连版)',
       modes: ['latest', 'yesterday', 'date'],
-      outputFile: 'raw_data/spdb_v2_data.json',
+      outputFile: 'raw_data/spdb_data.json',
     }));
     return;
   }
@@ -278,7 +278,7 @@ async function main() {
   console.log(`[spdb_v2] 模式: ${mode}${mode === 'date' ? ` 目标日期: ${targetDate}` : ` 数量: ${count}`}`);
 
   const scrapeTime = formatScrapeTime();
-  const writer = new JsonWriter(OUTPUT_JSON, { source: 'spdb_v2', scrapeTime });
+  const writer = new JsonWriter(OUTPUT_JSON, { source: 'spdb', scrapeTime });
   const matchedRows = [];
   let totalCollected = 0;
   let page = 1;
