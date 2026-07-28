@@ -58,10 +58,11 @@ async def get_sources():
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute("""
-                SELECT DISTINCT s.id, s.name, s.description, s.aliases
-                FROM bids b
-                JOIN sites s ON b.site_id = s.id
-                WHERE b.site_id IS NOT NULL
+                SELECT s.id, s.name, s.description, s.aliases
+                FROM sites s
+                WHERE s.id IN (
+                    SELECT DISTINCT site_id FROM bids WHERE site_id IS NOT NULL
+                )
                 ORDER BY s.id
             """)
             rows = await cur.fetchall()
