@@ -1,8 +1,12 @@
 """站点表 CRUD 操作"""
 
+import asyncio
 import json
 
 from core.database import get_pool
+
+# 并发锁：保护 create_site 中 INSERT + MAX(id) 回退的原子性
+_create_lock = asyncio.Lock()
 
 
 def _parse_aliases(val) -> list:
@@ -88,22 +92,23 @@ async def site_url_exists(url: str) -> bool:
 
 
 async def create_site(name: str, url: str, scraper_name: str, description: str = "", aliases: list | None = None) -> int:
-    """创建站点，返回新 ID"""
+    """创建站点，返回新 ID（加锁防止并发下 MAX(id) 回退不准）"""
     pool = await get_pool()
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute(
-                """INSERT INTO sites (name, url, scraper_name, description, aliases, status, hidden)
-                   VALUES (%s, %s, %s, %s, %s, 'active', 0)""",
-                (name, url, scraper_name, description, _dump_aliases(aliases))
-            )
-            new_id = cur.lastrowid
-            if new_id is None:
-                # Doris 可能不返回 lastrowid，回退查询
-                await cur.execute("SELECT MAX(id) FROM sites")
-                row = await cur.fetchone()
-                new_id = row[0] if row else None
-            return new_id
+    async with _create_lock:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """INSERT INTO sites (name, url, scraper_name, description, aliases, status, hidden)
+                       VALUES (%s, %s, %s, %s, %s, 'active', 0)""",
+                    (name, url, scraper_name, description, _dump_aliases(aliases))
+                )
+                new_id = cur.lastrowid
+                if new_id is None:
+                    # Doris 可能不返回 lastrowid，回退查询
+                    await cur.execute("SELECT MAX(id) FROM sites")
+                    row = await cur.fetchone()
+                    new_id = row[0] if row else None
+                return new_id
 
 
 async def update_site(site_id: int, name: str, description: str = "", aliases: list | None = None):

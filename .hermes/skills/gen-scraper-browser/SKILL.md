@@ -137,6 +137,7 @@ browser_snapshot(full=true)
  *   node scrape_<name>.js --latest 5          # 爬取最新 5 条
  *   node scrape_<name>.js --yesterday         # 爬取昨天的数据
  *   node scrape_<name>.js --date 2026-07-24   # 爬取指定日期的数据
+ *   node scrape_<name>.js --latest 5 --chrome-args "--no-sandbox,--disable-gpu"  # 覆盖 Chrome 启动参数
  * 
  * 使用 Chrome CDP 绕过 WAF 检测
  */
@@ -186,12 +187,22 @@ function parseDate(dateStr) {
   return null;
 }
 
-// 查找真实 Chrome 路径
+// Chrome 启动参数（可通过 --chrome-args CLI 参数覆盖）
+const CHROME_ARGS = [
+  '--no-first-run',
+  '--no-default-browser-check',
+  '--no-sandbox',                // Docker 环境必需
+  '--disable-dev-shm-usage',     // 避免 /dev/shm 空间不足
+  '--disable-gpu',
+  '--remote-debugging-address=127.0.0.1',  // 显式绑定 IPv4
+];
+
+// 查找真实 Chrome 路径（Docker 优先）
 function findChrome() {
   const paths = [
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome',       // Docker 环境（优先）
     '/usr/bin/chromium-browser',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',  // macOS 本地
   ];
   for (const p of paths) {
     if (fs.existsSync(p)) return p;
@@ -315,7 +326,8 @@ async function goToNextPage(page) {
 
 // 主爬取逻辑
 async function scrape(options = {}) {
-  const { mode = 'latest', count = 0, targetDate = null } = options;
+  const { mode = 'latest', count = 0, targetDate = null, chromeArgs = null } = options;
+  const effectiveArgs = chromeArgs || CHROME_ARGS;
   console.log(`[<网站名>] 启动爬虫... (模式: ${mode}${targetDate ? ', 目标日期: ' + targetDate : ''}${mode === 'latest' ? ', 最新 ' + count + ' 条' : ''})`);
 
   const chromePath = findChrome();
@@ -333,8 +345,7 @@ async function scrape(options = {}) {
   const chromeProcess = spawn(chromePath, [
     `--remote-debugging-port=${debugPort}`,
     `--user-data-dir=${userDataDir}`,
-    '--no-first-run',
-    '--no-default-browser-check',
+    ...effectiveArgs,
   ], {
     stdio: 'ignore',
     detached: true,
@@ -461,10 +472,12 @@ if (require.main === module) {
   let mode = 'latest';
   let count = 0;
   let targetDate = null;
+  let chromeArgs = null;
 
   const latestIdx = args.indexOf('--latest');
   const yesterdayIdx = args.indexOf('--yesterday');
   const dateIdx = args.indexOf('--date');
+  const chromeArgsIdx = args.indexOf('--chrome-args');
 
   if (yesterdayIdx >= 0) {
     mode = 'date';
@@ -488,7 +501,11 @@ if (require.main === module) {
     process.exit(1);
   }
 
-  scrape({ mode, count, targetDate }).catch(err => {
+  if (chromeArgsIdx >= 0 && args[chromeArgsIdx + 1]) {
+    chromeArgs = args[chromeArgsIdx + 1].split(',').map(s => s.trim()).filter(Boolean);
+  }
+
+  scrape({ mode, count, targetDate, chromeArgs }).catch(err => {
     console.error('爬虫执行失败:', err.message);
     process.exit(1);
   });
@@ -497,7 +514,7 @@ if (require.main === module) {
 
 #### 代码生成规则（必须全部遵守）
 
-1. **必须用 `findChrome()` 查找真实 Chrome 路径**
+1. **必须用 `findChrome()` 查找真实 Chrome 路径**（Docker `/usr/bin/google-chrome` 优先）
 2. **必须用 `chromium.connectOverCDP()` 连接**，不要用 `chromium.launch()`
 3. **Chrome 数据目录用临时目录**（`/tmp/<name>-chrome-${Date.now()}`），用完后清理
 4. **调试端口用随机值**（`9222 + Math.floor(Math.random() * 1000)`），避免端口冲突
@@ -508,11 +525,12 @@ if (require.main === module) {
 9. **`--yesterday` / `--date` 模式必须客户端日期过滤**
 10. **日期解析支持多种格式**：`2025年1月10日`、`2025-01-10`、`2025/01/10`
 11. **每条 row 必须包含**: `publishTime`, `title`, `url`, `content`
-12. **finally 块必须清理**：关闭 browser、kill Chrome 进程、删除临时数据目录
-13. **WAF 检测**：检查页面长度，如果 < 2000 字符，保存到调试文件
-14. **翻页上限**：设置 `MAX_PAGES = 15`，防止死循环
-15. **URL 去重**：使用 `Set` 记录已访问的 URL
-16. **提前终止**：date 模式下，如果本页最早日期已早于目标日期，停止翻页
+12. **finally 块必须清理**：关闭 browser、kill Chrome 进程、`sleep(1500)` 等文件句柄释放、删除临时数据目录
+13. **Chrome 启动参数抽成 `CHROME_ARGS` 常量**：包含 `--no-sandbox`（Docker 必需）、`--disable-dev-shm-usage`（shm 空间不足）、`--remote-debugging-address=127.0.0.1`（显式 IPv4）。支持 `--chrome-args` CLI 参数覆盖
+14. **WAF 检测**：检查页面长度，如果 < 2000 字符，保存到调试文件
+15. **翻页上限**：设置 `MAX_PAGES = 15`，防止死循环
+16. **URL 去重**：使用 `Set` 记录已访问的 URL
+17. **提前终止**：date 模式下，如果本页最早日期已早于目标日期，停止翻页
 
 ### Phase 3: 测试验证（必须全部通过）
 
@@ -623,6 +641,13 @@ node scrape_<name>.js --latest 3
 - Chrome 启动需要 3 秒，`sleep(3000)` 不能省
 - 端口冲突：用随机端口
 - 如果 `connectOverCDP` 失败，检查 Chrome 是否真的启动了：`ps aux | grep chrome`
+
+### Docker 环境下 Chrome 启动失败
+三个必需的 Chrome 参数（已内置在模板 `CHROME_ARGS` 中）：
+- `--no-sandbox`：Docker 容器没有沙箱权限，不加会直接崩溃
+- `--disable-dev-shm-usage`：Docker 默认 `/dev/shm` 只有 64MB，Chrome 会因内存不足崩溃
+- `--remote-debugging-address=127.0.0.1`：显式绑定 IPv4，否则可能绑定到 IPv6 `::1` 导致 CDP 连接失败
+- 本地调试时可通过 `--chrome-args` 覆盖默认参数
 
 ### 页面内容过短（WAF 拦截）
 - 检查：`page.content().length < 2000`

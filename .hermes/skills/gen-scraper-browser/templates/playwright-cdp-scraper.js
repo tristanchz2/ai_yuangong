@@ -16,6 +16,7 @@
  *   node scrape_<name>.js --latest 5          # 爬取最新 5 条
  *   node scrape_<name>.js --yesterday         # 爬取昨天的数据
  *   node scrape_<name>.js --date 2025-01-10   # 爬取指定日期的数据
+ *   node scrape_<name>.js --latest 5 --chrome-args "--no-sandbox,--remote-debugging-address=0.0.0.0"  # 覆盖 Chrome 启动参数
  */
 
 const { chromium } = require('playwright');
@@ -28,6 +29,16 @@ const path = require('path');
 const BASE_URL = '<BASE_URL>';  // 如 https://www.cebbank.com
 const LIST_URL = `${BASE_URL}<LIST_PATH>`;  // 如 /site/zhpd/zxgg35/cggg/index.html
 const OUTPUT_FILE = path.join(__dirname, '..', 'raw_data', '<name>_data.json');
+
+// Chrome 启动参数（可通过 --chrome-args CLI 参数覆盖）
+const CHROME_ARGS = [
+  '--no-first-run',
+  '--no-default-browser-check',
+  '--no-sandbox',                // Docker 环境必需
+  '--disable-dev-shm-usage',     // 避免 /dev/shm 空间不足
+  '--disable-gpu',
+  '--remote-debugging-address=127.0.0.1',  // 显式绑定 IPv4
+];
 
 // ==================== Utility Functions ====================
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -58,9 +69,9 @@ function getYesterday() {
 // ==================== Find Chrome ====================
 function findChrome() {
   const paths = [
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome',       // Docker 环境（优先）
     '/usr/bin/chromium-browser',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',  // macOS 本地
   ];
   for (const p of paths) {
     if (fs.existsSync(p)) return p;
@@ -72,7 +83,8 @@ function findChrome() {
 
 // ==================== Main Scraper ====================
 async function scrape(options = {}) {
-  const { latest = 0, yesterday = false, date = null } = options;
+  const { latest = 0, yesterday = false, date = null, chromeArgs = null } = options;
+  const effectiveArgs = chromeArgs || CHROME_ARGS;
   console.log('[<网站名称>] 启动 Chrome CDP 爬虫...');
 
   const chromePath = findChrome();
@@ -90,8 +102,7 @@ async function scrape(options = {}) {
   const chromeProcess = spawn(chromePath, [
     `--remote-debugging-port=${debugPort}`,
     `--user-data-dir=${userDataDir}`,
-    '--no-first-run',
-    '--no-default-browser-check',
+    ...effectiveArgs,
   ], {
     stdio: 'ignore',
     detached: true,
@@ -228,6 +239,7 @@ async function scrape(options = {}) {
     // 必须清理：关闭 browser、kill Chrome、删除临时目录
     if (browser) await browser.close();
     try { chromeProcess.kill(); } catch {}
+    await sleep(1500); // 等 Chrome 释放文件句柄，避免临时目录删不干净
     try { execSync(`rm -rf "${userDataDir}"`); } catch {}
   }
 }
@@ -250,10 +262,12 @@ if (require.main === module) {
   let latest = 0;
   let yesterday = false;
   let date = null;
+  let chromeArgs = null;
 
   const latestIdx = args.indexOf('--latest');
   const yesterdayIdx = args.indexOf('--yesterday');
   const dateIdx = args.indexOf('--date');
+  const chromeArgsIdx = args.indexOf('--chrome-args');
 
   if (yesterdayIdx >= 0) {
     yesterday = true;
@@ -274,7 +288,11 @@ if (require.main === module) {
     process.exit(1);
   }
 
-  scrape({ latest, yesterday, date }).catch(err => {
+  if (chromeArgsIdx >= 0 && args[chromeArgsIdx + 1]) {
+    chromeArgs = args[chromeArgsIdx + 1].split(',').map(s => s.trim()).filter(Boolean);
+  }
+
+  scrape({ latest, yesterday, date, chromeArgs }).catch(err => {
     console.error('爬虫执行失败:', err.message);
     process.exit(1);
   });
