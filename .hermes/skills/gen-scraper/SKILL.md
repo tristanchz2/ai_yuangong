@@ -596,7 +596,7 @@ const MAX_PAGES = 10;
 **3.1 检查 --info 输出**
 
 ```bash
-cd /Users/tristcz/project/ai_yuangong/scrapers
+cd <project_root>/scrapers
 node scrape_<name>.js --info
 ```
 
@@ -605,7 +605,7 @@ node scrape_<name>.js --info
 **3.2 运行 --latest 1 生成测试数据**
 
 ```bash
-cd /Users/tristcz/project/ai_yuangong/scrapers
+cd <project_root>/scrapers
 node scrape_<name>.js --latest 1
 ```
 
@@ -616,7 +616,7 @@ node scrape_<name>.js --latest 1
 运行以下验证脚本，检查所有必需条件：
 
 ```bash
-cd /Users/tristcz/project/ai_yuangong
+cd <project_root>
 python3 -c "
 import json, sys
 
@@ -683,7 +683,7 @@ print('✅ 所有验证通过')
 验证通过后，再测试批量模式：
 
 ```bash
-cd /Users/tristcz/project/ai_yuangong/scrapers
+cd <project_root>/scrapers
 node scrape_<name>.js --latest 3
 ```
 
