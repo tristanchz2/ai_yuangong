@@ -37,7 +37,17 @@ from core.schema import ensure_tables
 async def lifespan(app: FastAPI):
     await init_db()
     await ensure_tables()
+
+    # 启动定时任务调度器
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    from services.scheduler import start_scheduler, stop_scheduler
+    start_scheduler()
+
     yield
+
+    # 停止定时任务
+    stop_scheduler()
     await close_db()
 
 
