@@ -359,12 +359,14 @@ def start_scheduler():
 
     # 监听 APScheduler 事件，捕获 job 执行异常
     def on_job_error(event):
-        logger.error(f"⚠️ 定时任务执行异常: job_id={event.job_id}, code={event.code}")
-        if event.exception:
-            logger.error(f"   异常详情: {event.exception}", exc_info=event.traceback)
+        job_id = getattr(event, 'job_id', None)
+        logger.error(f"⚠️ 定时任务执行异常: job_id={job_id}, code={event.code}")
+        if getattr(event, 'exception', None):
+            logger.error(f"   异常详情: {event.exception}", exc_info=getattr(event, 'traceback', None))
 
     def on_job_executed(event):
-        logger.info(f"✅ 定时任务已触发: job_id={event.job_id}")
+        job_id = getattr(event, 'job_id', None)
+        logger.info(f"✅ 定时任务已触发: job_id={job_id}")
 
     scheduler.add_listener(on_job_error, 0x400)  # EVENT_JOB_ERROR
     scheduler.add_listener(on_job_executed, 0x2)  # EVENT_JOB_EXECUTED
