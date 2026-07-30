@@ -6,6 +6,7 @@ import secrets
 import time
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, HTTPException, Depends, Header
 
 from config.settings import PROJECT_ROOT, SCRAPERS_DIR, RAW_DATA_DIR
@@ -225,6 +226,98 @@ async def delete_keyword(keyword_id: int, _=Depends(verify_admin_token)):
     await drop_subscription_table(keyword_id)
 
     return {"message": f"订阅词已删除: {row[0]}"}
+
+
+# ============ 推送昨日订阅数据 ============
+
+
+@router.post("/push-yesterday")
+async def push_yesterday_data(_=Depends(verify_admin_token)):
+    """推送昨天符合订阅词的数据到 webhook，一条一条推送"""
+    from core.database import get_pool
+    from datetime import date, timedelta
+    from services.subscription import get_all_subscription_keywords
+
+    webhook_url = os.getenv("YZJ_WEBHOOK_URL", "").strip()
+    if not webhook_url:
+        raise HTTPException(status_code=400, detail="未配置云之家 Webhook，请在 .env 中填写 YZJ_WEBHOOK_URL")
+
+    yesterday = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    # 获取所有订阅词
+    keywords = await get_all_subscription_keywords()  # [(id, word), ...]
+    if not keywords:
+        raise HTTPException(status_code=400, detail="当前没有订阅词，请先添加订阅词")
+
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            # 查询昨天的所有 bids
+            await cur.execute(
+                "SELECT id, title, source, url FROM bids WHERE publish_date = %s",
+                (yesterday,)
+            )
+            rows = await cur.fetchall()
+
+    if not rows:
+        raise HTTPException(status_code=200, detail=f"昨天({yesterday})没有爬取数据，无需推送")
+
+    # 构建 bid_id -> 订阅词匹配 的映射
+    bid_matches = {}  # {bid_id: [matched_word, ...]}
+    async with pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            for kw_id, kw_word in keywords:
+                sub_table = f"sub_{kw_id}"
+                try:
+                    await cur.execute(
+                        f"SELECT bid_id FROM `{sub_table}` WHERE bid_id IN ({','.join(['%s'] * len(rows))})",
+                        tuple(r[0] for r in rows)
+                    )
+                    matched_rows = await cur.fetchall()
+                    for mr in matched_rows:
+                        bid_id = mr[0]
+                        if bid_id not in bid_matches:
+                            bid_matches[bid_id] = []
+                        bid_matches[bid_id].append(kw_word)
+                except Exception:
+                    pass  # 子表不存在则跳过
+
+    if not bid_matches:
+        raise HTTPException(status_code=200, detail=f"昨天({yesterday})的数据没有匹配到任何订阅词")
+
+    # 一条一条推送到 webhook
+    pushed = 0
+    failed = 0
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for bid_id, matched_words in bid_matches.items():
+            # 找到对应的 bid 记录
+            bid_row = next((r for r in rows if r[0] == bid_id), None)
+            if not bid_row:
+                continue
+            _, title, source, url = bid_row
+
+            content = f"订阅词：{'、'.join(matched_words)} 标题：{title or ''} 来源：{source or ''} url：{url or ''}"
+            payload = {"content": content}
+
+            try:
+                resp = await client.post(
+                    webhook_url,
+                    json=payload,
+                    headers={"Content-Type": "application/json;charset=utf-8"}
+                )
+                if resp.status_code == 200:
+                    pushed += 1
+                else:
+                    failed += 1
+            except Exception:
+                failed += 1
+
+    return {
+        "message": f"推送完成：成功 {pushed} 条，失败 {failed} 条（共 {len(bid_matches)} 条匹配数据）",
+        "pushed": pushed,
+        "failed": failed,
+        "total": len(bid_matches),
+    }
 
 
 # ============ 批量爬取 ============

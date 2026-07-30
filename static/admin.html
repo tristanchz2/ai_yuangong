@@ -215,7 +215,7 @@
         <button class="btn btn-info" onclick="openKeywordModal()">🏷️ 订阅词管理</button>
         <button class="btn btn-success" onclick="startBatchScrape()">重新爬取昨日数据</button>
         <button class="btn btn-success" onclick="toggleAddForm()">+ 添加网站</button>
-        <button class="btn btn-logout" onclick="doLogout()">退出</button>
+        <button class="btn btn-success" onclick="pushYesterday()"> 推送</button>
       </div>
     </div>
     <div class="add-form" id="addForm">
@@ -1001,6 +1001,18 @@ function logClass(line) {
   if (line.includes('⚠') || line.includes('警告')) return ' warning';
   if (line.includes('✗') || line.includes('失败') || line.includes('错误') || line.includes('❌')) return ' error';
   return '';
+}
+
+// ============ 推送昨日订阅数据 ============
+
+async function pushYesterday() {
+  if (!confirm('确定要推送昨天符合订阅词的数据吗？')) return;
+  try {
+    const resp = await fetch('/api/admin/push-yesterday', { method: 'POST', headers: { 'X-Admin-Token': adminToken } });
+    if (!resp.ok) { const err = await resp.json(); alert(err.detail || '推送失败'); return; }
+    const data = await resp.json();
+    alert(data.message);
+  } catch (e) { alert('网络错误: ' + e.message); }
 }
 
 // ============ 批量爬取 ============

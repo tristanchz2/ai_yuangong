@@ -299,7 +299,7 @@ async def get_category_data(
                        bids.remarks, bids.created_at, bids.site_id, bids.winners
                 {join_clause}
                 WHERE bids.notice_type = %s{all_filters}
-                ORDER BY bids.created_at DESC
+                ORDER BY bids.publish_date DESC, bids.id DESC
                 LIMIT %s OFFSET %s
             """, tuple(base_params + [page_size, offset]))
             rows = await cur.fetchall()
