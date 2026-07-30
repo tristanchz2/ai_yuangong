@@ -21,12 +21,8 @@ from services.subscription import (
     insert_bid_subscription,
 )
 
-# 省份索引
-from services.province_index import (
-    ensure_all_province_tables,
-    get_all_provinces,
-    insert_bid_province,
-)
+# 省份数据查询
+from services.province_index import get_all_provinces
 
 # 标书 CRUD
 from services.bid_repo import (

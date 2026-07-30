@@ -33,7 +33,6 @@ from core.database import init_db, close_db, get_yesterday_str
 from core.utils import parse_date_str
 from services.region import parse_service_region
 from services.subscription import get_all_subscription_keywords, ensure_subscription_table, insert_bid_subscription
-from services.province_index import get_all_provinces, insert_bid_province
 from services.bid_repo import (
     insert_bid, get_scraper_to_site_id_map, get_site_id_to_name_map, delete_bids_by_source_date
 )
@@ -224,8 +223,6 @@ async def async_main():
                 print(f"⚠️ 清理旧数据失败 (site_id={sid}): {e}")
         # 构建订阅词 word -> id 的映射
         sub_word_to_id = {word: kid for kid, word in subscription_keywords}
-        # 构建省份 name -> id 的映射
-        province_name_to_id = {name: pid for pid, name in await get_all_provinces()}
         for r in all_results:
             if is_cancelled():
                 print(f"🛑 检测到取消信号，停止 DB 写入（已写入 {db_saved} 条）")
@@ -270,8 +267,6 @@ async def async_main():
                     "winners_json": winners_json,
                 }
                 bid_id = await insert_bid(bid_data)
-                if service_province and service_province in province_name_to_id:
-                    await insert_bid_province(bid_id, province_name_to_id[service_province])
                 if sub_matches and isinstance(sub_matches, dict):
                     for word, matched in sub_matches.items():
                         if matched == 1 and word in sub_word_to_id:

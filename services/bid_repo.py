@@ -130,21 +130,7 @@ async def delete_bids_by_source_date(site_id: int, data_date: str) -> int:
                     tuple(bid_ids),
                 )
 
-    # 3. 删除所有省份索引表中的关联记录
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute("SELECT id FROM provinces")
-            province_rows = await cur.fetchall()
-    for province_row in province_rows:
-        province_table = f"province_{province_row[0]}"
-        async with pool.acquire() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    f"DELETE FROM `{province_table}` WHERE bid_id IN ({placeholders})",
-                    tuple(bid_ids),
-                )
-
-    # 4. 删除 bids 主表记录
+    # 3. 删除 bids 主表记录
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(

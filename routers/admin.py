@@ -194,13 +194,14 @@ async def add_keyword(req: KeywordCreate, _=Depends(verify_admin_token)):
             await cur.execute("SELECT id FROM keywords WHERE word = %s", (word,))
             if await cur.fetchone():
                 raise HTTPException(status_code=400, detail=f"订阅词已存在: {word}")
-            await cur.execute("INSERT INTO keywords (word) VALUES (%s)", (word,))
-            new_id = cur.lastrowid
-            if new_id is None:
-                # Doris 可能不返回 lastrowid，回退查询
-                await cur.execute("SELECT MAX(id) FROM keywords")
-                row = await cur.fetchone()
-                new_id = row[0] if row else None
+            # 预生成下一个 ID（Doris AUTO_INCREMENT 不可靠）
+            await cur.execute("SELECT IFNULL(MAX(id), 0) + 1 FROM keywords")
+            row = await cur.fetchone()
+            new_id = row[0] if row else 1
+            await cur.execute(
+                "INSERT INTO keywords (id, word) VALUES (%s, %s)",
+                (new_id, word)
+            )
 
     # 同步创建对应的订阅词子表
     await ensure_subscription_table(new_id)

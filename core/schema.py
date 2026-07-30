@@ -19,7 +19,7 @@ async def ensure_tables():
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            # ---- sites 表 ----
+            # ---- sites 表（UNIQUE KEY + MoW，支持 UPDATE / 真正的 DELETE）----
             await cur.execute("""
                 CREATE TABLE IF NOT EXISTS sites (
                     id BIGINT NOT NULL AUTO_INCREMENT,
@@ -32,21 +32,27 @@ async def ensure_tables():
                     hidden TINYINT DEFAULT '0',
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
-                DUPLICATE KEY(id)
+                UNIQUE KEY(id)
                 DISTRIBUTED BY HASH(id) BUCKETS 1
-                PROPERTIES ("replication_num" = "1")
+                PROPERTIES (
+                    "replication_num" = "1",
+                    "enable_unique_key_merge_on_write" = "true"
+                )
             """)
 
-            # ---- keywords 表 ----
+            # ---- keywords 表（UNIQUE KEY + MoW）----
             await cur.execute("""
                 CREATE TABLE IF NOT EXISTS keywords (
                     id BIGINT NOT NULL AUTO_INCREMENT,
                     word VARCHAR(200) NOT NULL,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
-                DUPLICATE KEY(id)
+                UNIQUE KEY(id)
                 DISTRIBUTED BY HASH(id) BUCKETS 1
-                PROPERTIES ("replication_num" = "1")
+                PROPERTIES (
+                    "replication_num" = "1",
+                    "enable_unique_key_merge_on_write" = "true"
+                )
             """)
 
             # ---- provinces 表 ----
@@ -136,6 +142,3 @@ async def ensure_tables():
     # 确保所有订阅词对应的子表存在
     from services.subscription import ensure_all_subscription_tables
     await ensure_all_subscription_tables()
-    # 确保所有省份索引表存在
-    from services.province_index import ensure_all_province_tables
-    await ensure_all_province_tables()

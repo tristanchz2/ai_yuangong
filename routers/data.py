@@ -134,7 +134,7 @@ async def get_category_data(
     page_size: int = Query(default=50, ge=1, le=200),
     keyword_ids: str = Query(default="", description="逗号分隔的订阅词ID，用于筛选"),
     site_ids: str = Query(default="", description="逗号分隔的来源站点ID，用于筛选"),
-    province_ids: str = Query(default="", description="逗号分隔的省份ID，走省份索引表筛选"),
+    province_ids: str = Query(default="", description="逗号分隔的省份ID，走 bids.service_province 筛选"),
     city: str = Query(default="", description="城市名，走 WHERE service_city 筛选"),
     budget_min: float = Query(default=None, description="预算下限（元）"),
     budget_max: float = Query(default=None, description="预算上限（元）"),
@@ -190,13 +190,13 @@ async def get_category_data(
             site_id_list.append(sid)
         site_id_list = list(dict.fromkeys(site_id_list))
 
-    # 解析并校验省份 ID（仅允许 provinces 表中存在的整数 ID，防止拼接表名注入）
-    prov_id_list: list = []
+    # 解析并校验省份 ID → 转为省份名称列表（直接走 bids.service_province 筛选）
+    prov_name_list: list = []
     if province_ids.strip():
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
-                await cur.execute("SELECT id FROM provinces")
-                valid_prov_ids = {r[0] for r in await cur.fetchall()}
+                await cur.execute("SELECT id, name FROM provinces")
+                prov_id_to_name = {r[0]: r[1] for r in await cur.fetchall()}
         for part in province_ids.split(","):
             part = part.strip()
             if not part:
@@ -205,10 +205,10 @@ async def get_category_data(
                 pid = int(part)
             except ValueError:
                 raise HTTPException(status_code=400, detail=f"非法的省份ID: {part}")
-            if pid not in valid_prov_ids:
+            if pid not in prov_id_to_name:
                 raise HTTPException(status_code=400, detail=f"省份不存在: id={pid}")
-            prov_id_list.append(pid)
-        prov_id_list = list(dict.fromkeys(prov_id_list))
+            prov_name_list.append(prov_id_to_name[pid])
+        prov_name_list = list(dict.fromkeys(prov_name_list))
 
     # 来源站点筛选条件：WHERE site_id IN (...)
     site_filter = ""
@@ -222,11 +222,13 @@ async def get_category_data(
         unions = " UNION ".join(f"SELECT bid_id FROM sub_{kid}" for kid in kw_id_list)
         sub_filter = f" AND bids.id IN ({unions})"
 
-    # 省份筛选条件：UNION 各省份索引表
+    # 省份筛选条件：直接 WHERE bids.service_province IN (...)
     prov_filter = ""
-    if prov_id_list:
-        unions = " UNION ".join(f"SELECT bid_id FROM province_{pid}" for pid in prov_id_list)
-        prov_filter = f" AND bids.id IN ({unions})"
+    prov_params: list = []
+    if prov_name_list:
+        prov_ph = ",".join(["%s"] * len(prov_name_list))
+        prov_filter = f" AND bids.service_province IN ({prov_ph})"
+        prov_params = prov_name_list
 
     # 城市筛选条件：直接 WHERE service_city（参数化，防注入）
     city_filter = ""
@@ -268,6 +270,7 @@ async def get_category_data(
     # 组装查询参数（COUNT 与分页查询共用）
     base_params: list = [category]
     base_params += site_id_list
+    base_params += prov_params
     if city_param is not None:
         base_params.append(city_param)
     base_params += budget_params + publish_params + bid_params
