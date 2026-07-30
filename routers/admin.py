@@ -252,11 +252,11 @@ async def push_yesterday_data(_=Depends(verify_admin_token)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            # 查询昨天的所有 bids（含推送所需字段）
+            # 查询昨天的采购公告（含推送所需字段）
             await cur.execute(
                 "SELECT id, title, source, url, purchaser, budget, "
                 "service_category, bid_time, publish_time, service_location "
-                "FROM bids WHERE publish_date = %s",
+                "FROM bids WHERE publish_date = %s AND notice_type = '采购公告'",
                 (yesterday,)
             )
             rows = await cur.fetchall()
