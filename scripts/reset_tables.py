@@ -87,31 +87,48 @@ async def reset_tables():
                     await cur.execute(f"DROP TABLE IF EXISTS `{t}`")
             print(f"   删除: {t}")
 
-    # 4. 删除主表
-    for t in ["bids", "sites", "keywords", "provinces"]:
+    # 4. 检查 sites 表是否已有用户自定义数据（id > 21）
+    skip_sites = False
+    if "sites" in all_tables:
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute("SELECT MAX(id) FROM sites")
+                row = await cur.fetchone()
+                if row and row[0] and row[0] > 21:
+                    skip_sites = True
+                    print(f"⚠️  sites 表已有自定义数据（MAX(id)={row[0]}），跳过 sites 表的重建和恢复")
+
+    # 5. 删除主表
+    drop_tables = ["bids", "keywords", "provinces"]
+    if not skip_sites:
+        drop_tables.append("sites")
+    for t in drop_tables:
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(f"DROP TABLE IF EXISTS `{t}`")
         print(f"   删除主表: {t}")
 
-    # 5. 重建表
+    # 6. 重建表
     print("🔨 重建表结构...")
     from core.schema import ensure_tables
     await ensure_tables()
     print("   表结构已重建")
 
-    # 6. 恢复 sites 数据
-    print(f"📥 恢复 sites 数据（共 {len(SITES_DATA)} 条）...")
-    async with pool.acquire() as conn:
-        async with conn.cursor() as cur:
-            for row in SITES_DATA:
-                id_, name, url, scraper_name, description, aliases, status, hidden = row
-                await cur.execute(
-                    "INSERT INTO sites (id, name, url, scraper_name, description, aliases, status, hidden) "
-                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
-                    (id_, name, url, scraper_name, description or '', aliases, status or 'active', hidden)
-                )
-    print(f"   已恢复 {len(SITES_DATA)} 条站点记录")
+    # 7. 恢复 sites 数据（仅在未跳过时）
+    if not skip_sites:
+        print(f"📥 恢复 sites 数据（共 {len(SITES_DATA)} 条）...")
+        async with pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                for row in SITES_DATA:
+                    id_, name, url, scraper_name, description, aliases, status, hidden = row
+                    await cur.execute(
+                        "INSERT INTO sites (id, name, url, scraper_name, description, aliases, status, hidden) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+                        (id_, name, url, scraper_name, description or '', aliases, status or 'active', hidden)
+                    )
+        print(f"   已恢复 {len(SITES_DATA)} 条站点记录")
+    else:
+        print("📥 跳过 sites 数据恢复（保留用户自定义数据）")
 
     pool.close()
     await pool.wait_closed()
