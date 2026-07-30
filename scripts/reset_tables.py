@@ -45,6 +45,7 @@ SITES_DATA = [
     (18, '恒丰银行', 'https://www.hfbank.com.cn/gyhf/cgpt/jzcg/ygg/index.shtml', 'hfbank', '', None, 'active', 0),
     (19, '北京银行集中采购管理系统', 'https://login-cpm-xt.bankofbeijing.com.cn/cms/default/webfile/1ywgg1/index.html', 'bankofbeijing', '北京银行', None, 'active', 0),
     (20, '长沙银行', 'https://www.cscb.cn/site/col173/list.html', 'cscb', '', None, 'active', 1),  # 暂时不爬，hidden=1
+    (21, '成都农商银行', 'https://www.cdrcb.com/cgnews/', 'cdrcb', '', None, 'active', 0),
 ]
 
 
