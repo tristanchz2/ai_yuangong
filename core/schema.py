@@ -34,13 +34,10 @@ async def ensure_tables():
                 )
                 UNIQUE KEY(id)
                 DISTRIBUTED BY HASH(id) BUCKETS 1
-                PROPERTIES (
-                    "replication_num" = "1",
-                    "enable_unique_key_merge_on_write" = "true"
-                )
+                PROPERTIES ("replication_num" = "1")
             """)
 
-            # ---- keywords 表（UNIQUE KEY + MoW）----
+            # ---- keywords 表 ----
             await cur.execute("""
                 CREATE TABLE IF NOT EXISTS keywords (
                     id BIGINT NOT NULL AUTO_INCREMENT,
@@ -49,10 +46,7 @@ async def ensure_tables():
                 )
                 UNIQUE KEY(id)
                 DISTRIBUTED BY HASH(id) BUCKETS 1
-                PROPERTIES (
-                    "replication_num" = "1",
-                    "enable_unique_key_merge_on_write" = "true"
-                )
+                PROPERTIES ("replication_num" = "1")
             """)
 
             # ---- provinces 表 ----
