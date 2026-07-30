@@ -252,9 +252,11 @@ async def push_yesterday_data(_=Depends(verify_admin_token)):
     pool = await get_pool()
     async with pool.acquire() as conn:
         async with conn.cursor() as cur:
-            # 查询昨天的所有 bids
+            # 查询昨天的所有 bids（含推送所需字段）
             await cur.execute(
-                "SELECT id, title, source, url FROM bids WHERE publish_date = %s",
+                "SELECT id, title, source, url, purchaser, budget, "
+                "service_category, bid_time, publish_time, service_location "
+                "FROM bids WHERE publish_date = %s",
                 (yesterday,)
             )
             rows = await cur.fetchall()
@@ -285,18 +287,31 @@ async def push_yesterday_data(_=Depends(verify_admin_token)):
     if not bid_matches:
         raise HTTPException(status_code=200, detail=f"昨天({yesterday})的数据没有匹配到任何订阅词")
 
+    # 构建 bid_id -> row 的索引
+    bid_row_map = {r[0]: r for r in rows}
+
     # 一条一条推送到 webhook
     pushed = 0
     failed = 0
     async with httpx.AsyncClient(timeout=10.0) as client:
         for bid_id, matched_words in bid_matches.items():
-            # 找到对应的 bid 记录
-            bid_row = next((r for r in rows if r[0] == bid_id), None)
+            bid_row = bid_row_map.get(bid_id)
             if not bid_row:
                 continue
-            _, title, source, url = bid_row
+            (_, title, source, url, purchaser, budget,
+             service_category, bid_time, publish_time, service_location) = bid_row
 
-            content = f"订阅词：{'、'.join(matched_words)} 标题：{title or ''} 来源：{source or ''} url：{url or ''}"
+            budget_str = f"{budget:,.2f}元" if budget else "未公开"
+            content = f"""【订阅词】{'、'.join(matched_words)}
+【标题】{title or ''}
+【采购人】{purchaser or ''}
+【预算金额】{budget_str}
+【服务类型】{service_category or ''}
+【招标时间】{bid_time or ''}
+【发布时间】{publish_time or ''}
+【服务地址】{service_location or ''}
+【来源】{source or ''}
+【链接】{url or ''}"""
             payload = {"content": content}
 
             try:
