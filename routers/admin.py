@@ -403,6 +403,7 @@ async def cancel_batch_scrape(task_id: str, _=Depends(verify_admin_token)):
 @router.get("/tasks")
 async def get_all_tasks(_=Depends(verify_admin_token)):
     from services.batch_task import batch_tasks
+    from services.scheduler import scheduled_tasks
 
     all_tasks = []
 
@@ -434,7 +435,110 @@ async def get_all_tasks(_=Depends(verify_admin_token)):
             'details': task
         })
 
+    # 添加定时任务记录（已执行的）
+    for task_id, task in scheduled_tasks.items():
+        duration = None
+        if task.get('started_at') and task.get('finished_at'):
+            duration = task['finished_at'] - task['started_at']
+
+        all_tasks.append({
+            'task_id': task_id,
+            'type': task['type'],
+            'status': task['status'],
+            'description': task['description'],
+            'created_at': task['created_at'],
+            'duration': duration,
+            'details': task['details']
+        })
+
+    # 添加尚未执行的定时 job（从 APScheduler 注册信息中读取）
+    from services.scheduler import get_scheduler
+    scheduler = get_scheduler()
+    if scheduler and scheduler.running:
+        executed_job_ids = {t.get('job_id') for t in scheduled_tasks.values() if t.get('job_id')}
+        type_map = {
+            'daily_scrape_and_push': ('scheduled_scrape', '定时爬取+推送（等待中）'),
+            'daily_cleanup': ('cleanup', '定时数据清理（等待中）'),
+        }
+        for job in scheduler.get_jobs():
+            if job.id in executed_job_ids:
+                continue  # 已执行过，上面已经添加
+            mapped_type, desc = type_map.get(job.id, (job.id, job.name))
+            all_tasks.append({
+                'task_id': f'pending_{job.id}',
+                'type': mapped_type,
+                'status': 'waiting',
+                'description': desc,
+                'created_at': time.time(),
+                'duration': None,
+                'details': {
+                    'next_run_time': str(job.next_run_time) if job.next_run_time else None,
+                    'trigger': str(job.trigger),
+                }
+            })
+
     all_tasks.sort(key=lambda x: x['created_at'], reverse=True)
 
-    return {'tasks': all_tasks[:5]}
+    return {'tasks': all_tasks[:10]}
+
+
+# ============ 定时任务管理 ============
+
+@router.get("/scheduler/status")
+async def get_scheduler_status(_=Depends(verify_admin_token)):
+    """查看调度器状态和已注册的任务"""
+    from services.scheduler import get_scheduler, scheduled_tasks
+    from datetime import datetime
+
+    scheduler = get_scheduler()
+    if not scheduler:
+        return {
+            "running": False,
+            "message": "调度器未启动",
+            "jobs": [],
+            "scheduled_tasks_count": 0,
+            "scheduled_tasks": [],
+        }
+
+    jobs = []
+    for job in scheduler.get_jobs():
+        jobs.append({
+            "id": job.id,
+            "name": job.name,
+            "next_run_time": str(job.next_run_time) if job.next_run_time else None,
+            "trigger": str(job.trigger),
+        })
+
+    return {
+        "running": scheduler.running,
+        "jobs": jobs,
+        "scheduled_tasks_count": len(scheduled_tasks),
+        "scheduled_tasks": list(scheduled_tasks.values()),
+        "current_time": datetime.now().isoformat(),
+        "schedule_time_env": os.getenv("SCHEDULE_TIME", "07:00"),
+    }
+
+
+@router.post("/scheduler/trigger/{job_id}")
+async def trigger_scheduler_job(job_id: str, _=Depends(verify_admin_token)):
+    """手动触发指定的定时任务"""
+    from services.scheduler import get_scheduler, daily_scrape_and_push, daily_cleanup
+
+    scheduler = get_scheduler()
+    if not scheduler or not scheduler.running:
+        raise HTTPException(status_code=400, detail="调度器未启动或未运行")
+
+    job = scheduler.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail=f"任务不存在: {job_id}")
+
+    # 根据 job_id 调用对应的函数
+    if job_id == "daily_scrape_and_push":
+        asyncio.create_task(daily_scrape_and_push())
+        return {"message": "已触发爬取+推送任务"}
+    elif job_id == "daily_cleanup":
+        asyncio.create_task(daily_cleanup())
+        return {"message": "已触发数据清理任务"}
+    else:
+        raise HTTPException(status_code=400, detail=f"未知的任务: {job_id}")
 
