@@ -271,7 +271,7 @@ async def daily_cleanup():
     cutoff_date = (today_cst - timedelta(days=6)).strftime("%Y-%m-%d")
 
     try:
-        # 1. 查出要删除的 bid_id
+        # 1. 查出 7 天前的所有 bid_id
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
@@ -286,17 +286,50 @@ async def daily_cleanup():
             logger.info(f"ℹ️ 没有需要清理的数据（截止线: {cutoff_date}）")
             return
 
-        bid_ids = [r[0] for r in rows]
-        logger.info(f"📋 待清理 {len(bid_ids)} 条记录（publish_date < {cutoff_date}）")
+        all_bid_ids = set(r[0] for r in rows)
+        logger.info(f"📋 7天前共 {len(all_bid_ids)} 条记录（publish_date < {cutoff_date}）")
 
-        placeholders = ",".join(["%s"] * len(bid_ids))
-
-        # 2. 清理所有订阅词子表中的关联记录
+        # 2. 查出所有订阅词子表，找出匹配了订阅词的 bid_id（这些要保留）
+        matched_bid_ids = set()
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("SELECT id FROM keywords")
                 kw_rows = await cur.fetchall()
 
+        placeholders_all = ",".join(["%s"] * len(all_bid_ids))
+        for kw_row in kw_rows:
+            sub_table = f"sub_{kw_row[0]}"
+            try:
+                async with pool.acquire() as conn:
+                    async with conn.cursor() as cur:
+                        await cur.execute(
+                            f"SELECT bid_id FROM `{sub_table}` WHERE bid_id IN ({placeholders_all})",
+                            tuple(all_bid_ids),
+                        )
+                        matched = await cur.fetchall()
+                        matched_bid_ids.update(r[0] for r in matched)
+            except Exception:
+                pass  # 子表不存在则跳过
+
+        # 3. 排除匹配订阅词的记录，只删除不匹配的
+        bid_ids_to_delete = all_bid_ids - matched_bid_ids
+
+        if matched_bid_ids:
+            logger.info(f"🔒 保留 {len(matched_bid_ids)} 条匹配订阅词的记录（超出7天但仍保留）")
+
+        if not bid_ids_to_delete:
+            scheduled_tasks[task_id]['status'] = 'completed'
+            scheduled_tasks[task_id]['finished_at'] = time.time()
+            scheduled_tasks[task_id]['details'] = {'deleted_bids': 0, 'deleted_sub': 0, 'retained': len(matched_bid_ids)}
+            logger.info(f"ℹ️ 所有7天前记录均匹配订阅词，无需删除（保留 {len(matched_bid_ids)} 条）")
+            return
+
+        bid_ids_list = list(bid_ids_to_delete)
+        logger.info(f"🗑️ 待清理 {len(bid_ids_list)} 条记录（排除 {len(matched_bid_ids)} 条订阅词匹配）")
+
+        placeholders = ",".join(["%s"] * len(bid_ids_list))
+
+        # 4. 清理所有订阅词子表中的关联记录
         sub_cleaned = 0
         for kw_row in kw_rows:
             sub_table = f"sub_{kw_row[0]}"
@@ -305,24 +338,24 @@ async def daily_cleanup():
                     async with conn.cursor() as cur:
                         await cur.execute(
                             f"DELETE FROM `{sub_table}` WHERE bid_id IN ({placeholders})",
-                            tuple(bid_ids),
+                            tuple(bid_ids_list),
                         )
                         sub_cleaned += cur.rowcount
             except Exception:
                 pass  # 子表不存在则跳过
 
-        # 3. 删除 bids 主表记录
+        # 5. 删除 bids 主表记录
         async with pool.acquire() as conn:
             async with conn.cursor() as cur:
                 await cur.execute(
                     f"DELETE FROM bids WHERE id IN ({placeholders})",
-                    tuple(bid_ids),
+                    tuple(bid_ids_list),
                 )
 
         scheduled_tasks[task_id]['status'] = 'completed'
         scheduled_tasks[task_id]['finished_at'] = time.time()
-        scheduled_tasks[task_id]['details'] = {'deleted_bids': len(bid_ids), 'deleted_sub': sub_cleaned}
-        logger.info(f"🧹 清理完成: 删除 {len(bid_ids)} 条 bids, {sub_cleaned} 条子表记录")
+        scheduled_tasks[task_id]['details'] = {'deleted_bids': len(bid_ids_list), 'deleted_sub': sub_cleaned, 'retained': len(matched_bid_ids)}
+        logger.info(f"🧹 清理完成: 删除 {len(bid_ids_list)} 条 bids, {sub_cleaned} 条子表记录, 保留 {len(matched_bid_ids)} 条订阅词匹配记录")
 
     except Exception as e:
         scheduled_tasks[task_id]['status'] = 'failed'
