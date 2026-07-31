@@ -44,22 +44,20 @@
    - macOS/Windows: 安装 [Docker Desktop](https://www.docker.com/products/docker-desktop/)
    - Linux: `sudo apt install docker.io`
 
-2. **准备 MySQL 数据库**  
-   仅支持 MySQL 5.7.8+，推荐 MySQL 8.0+
+2. **准备 Doris 数据库**  
+   支持 Doris3.x
 
 3. **配置 Hermes skill**（如需爬虫自动生成功能）  
-   - 从 https://github.com/NousResearch/hermes-agent 下载Hermes agent并安装，按照指引配置Hermes
+   - 从 [https://github.com/NousResearch/hermes-agent](https://github.com/tristanchz2/hermes-agent) clone Hermes 源代码
    ```bash
-   # 测试 Hermes 是能正常使用
-   hermes chat -q "hello"
+   # 将 hermes 代码目录打包成 tar 文件
+   tar -czf hermes-agent.tar.gz hermes-src.tar.gz
    ```
+   移动 hermes-src.tar.gz 到本项目根目录
+   
    - 项目包含两个 skill 管理脚本，用途不同：  
       1. skill/gen-scraper - 尝试通过静态方法实现爬虫  
       2. skill/gen-scraper-browser - 通过模拟浏览器动态获取信息
-   ```
-   # 安装这两个 skills 到 $HOME/.hermes 根目录
-   bash setup_hermes.sh`
-   ```
    
 5. **平台支持**
    - ✅ macOS：完全支持
@@ -78,6 +76,8 @@
 # 1. 克隆项目
 git clone https://github.com/tristanchz2/ai_yuangong.git
 cd ai_yuangong
+git clone https://github.com/tristanchz2/hermes-agent.git
+tar -czf hermes-agent.tar.gz hermes-src.tar.gz
 
 # 2. 配置环境变量
 cp .env.example .env
@@ -88,12 +88,19 @@ docker build -t ai-yuangong .
 
 # 4. 运行容器
 docker run -d \
-  -p 8000:8000 \
+  -p 8080:8080 \
   -v $(pwd)/.env:/app/.env:ro \
+  -v hermes-data:/hermes-data \
+  -v $(pwd)/scrapers:/app/scrapers \
+  -v $(pwd)/.hermes/skills:/hermes-data/skills:ro \
   --name ai-yuangong \
   ai-yuangong
 
-# 5. 查看日志
+# 5. 配置 Hermes
+docker exec -it ai-yuangong bash
+hermes setup
+
+# 6. 查看日志
 docker logs -f ai-yuangong
 ```
 
@@ -124,16 +131,19 @@ npm install
 
 # 4. 安装 Playwright 浏览器
 npx playwright install chromium
+
+# 5. 本地安装 Hermes Agent
+curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
 ```
 
 #### 启动服务
 
 ```bash
 # 方式 A：直接运行
-xvfb-run --auto-servernum python server.py
+Xvfb :99 -screen 0 1024x768x24 -ac & export DISPLAY=:99 && python -u server.py
 
 # 方式 B：开发模式（热重载）
-uvicorn server:app --reload --port 8000
+Xvfb :99 -screen 0 1024x768x24 -ac & export DISPLAY=:99 && uvicorn server:app --host 0.0.0.0 --port 8080 --reload
 ```
 
 启动后访问：
@@ -175,6 +185,9 @@ python scripts/extract_fields.py --source ccb,icbc
 python scripts/extract_fields.py --concurrency 3
 ```
 
+### 重置所有表 （会删除订阅词）
+python scripts/reset_tables.py
+
 ## 项目结构
 
 ```
@@ -196,4 +209,3 @@ python scripts/extract_fields.py --concurrency 3
 ├── .env.example     # 环境变量模板
 └── .env             # 环境变量配置（不提交到 Git）
 ```
-
