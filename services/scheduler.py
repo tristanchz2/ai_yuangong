@@ -4,7 +4,11 @@ import asyncio
 import os
 import time
 import logging
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
+from zoneinfo import ZoneInfo
+
+# 北京时区
+CST = ZoneInfo("Asia/Shanghai")
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -45,7 +49,9 @@ async def daily_scrape_and_push():
     2. 等待爬取完成
     3. 推送匹配订阅词的采购公告到云之家
     """
-    print(f"🕐 [{time.strftime('%Y-%m-%d %H:%M:%S')}] 定时任务 daily_scrape_and_push 被触发")
+    # 使用北京时间
+    now_cst = datetime.now(CST)
+    print(f"🕐 [{now_cst.strftime('%Y-%m-%d %H:%M:%S')} CST] 定时任务 daily_scrape_and_push 被触发")
     # 立即创建任务记录，确保前端可见
     task_id = f"scheduled_{int(time.time() * 1000)}"
     scheduled_tasks[task_id] = {
@@ -143,7 +149,10 @@ async def _push_yesterday_data():
         logger.warning("⚠️ 未配置 YZJ_WEBHOOK_URL，跳过推送")
         return
 
-    yesterday = (date.today() - timedelta(days=1)).strftime("%Y-%m-%d")
+    # 使用北京时间计算昨天
+    now_cst = datetime.now(CST)
+    today_cst = now_cst.date()
+    yesterday = (today_cst - timedelta(days=1)).strftime("%Y-%m-%d")
 
     # 获取所有订阅词
     keywords = await get_all_subscription_keywords()
@@ -257,7 +266,9 @@ async def daily_cleanup():
     logger.info("🧹 定时清理任务启动：删除 7 天前的数据")
 
     pool = await get_pool()
-    cutoff_date = (date.today() - timedelta(days=6)).strftime("%Y-%m-%d")
+    # 使用北京时间计算截止日期
+    today_cst = datetime.now(CST).date()
+    cutoff_date = (today_cst - timedelta(days=6)).strftime("%Y-%m-%d")
 
     try:
         # 1. 查出要删除的 bid_id
